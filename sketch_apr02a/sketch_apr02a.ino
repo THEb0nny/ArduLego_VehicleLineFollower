@@ -26,7 +26,8 @@ void loop() {
 }
 
 void motorSpeed(Servo servoMot, int speed) {
-  // servo, 0->FW, 90->stop, 180->BW
+  // Servo, 0->FW, 90->stop, 180->BW
+  speed = constrain(speed, -90, 90);
   speed = map(speed, 0, 180, -90, 90);
   servoMot.write(speed);
 }
