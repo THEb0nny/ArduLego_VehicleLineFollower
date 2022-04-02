@@ -5,7 +5,7 @@
 #define SERVO_MOT_L_PIN 2
 #define SERVO_MOT_R_PIN 4
 
-#define RESET_BTN_PIN 6
+#define RESET_BTN_PIN D4
 
 Servo lServoMot, rServoMot;
 
