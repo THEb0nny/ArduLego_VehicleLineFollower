@@ -21,19 +21,20 @@ void setup() {
   pinMode(RESET_BTN_PIN, INPUT_PULLUP); // Start/stop/reset button attachment
   lServoMot.attach(SERVO_MOT_L_PIN);
   rServoMot.attach(SERVO_MOT_R_PIN);
-  //motorSpeed(lServoMot, 0); // При старте моторы выключаем
-  //motorSpeed(rServoMot, 0);
-  lServoMot.write(90);
-  rServoMot.write(90);
+  MotorSpeed(lServoMot, 0); // При старте моторы выключаем
+  MotorSpeed(rServoMot, 0);
+  //lServoMot.write(90);
+  //rServoMot.write(90);
   regulator.setDirection(NORMAL); // Направление регулирования (NORMAL/REVERSE). ПО УМОЛЧАНИЮ СТОИТ NORMAL
-  regulator.setLimits(0, 255); // Пределы регулятора
+  regulator.setLimits(0, 90); // Пределы регулятора
 }
 
 void loop() {
   if (!digitalRead(RESET_BTN_PIN)) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
   regulator.setpoint = 0; // Передаём ошибку
   float u = regulator.getResultTimer();
-  MotorsControl(-30, 50);
+  //MotorsControl(-30, 50);
+  MotorSpeed(lServoMot, 90); MotorSpeed(rServoMot, -90);
 }
 
 void MotorsControl(int dir, byte speed) {
