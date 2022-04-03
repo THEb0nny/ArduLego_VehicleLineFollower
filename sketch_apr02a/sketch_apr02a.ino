@@ -7,26 +7,24 @@
 
 #define SERVO_MOT_L_PIN 2 // Пин левого серво мотора
 #define SERVO_MOT_R_PIN 4 // Пин правого серво мотора
-#define RESET_BTN_PIN 7 // Кнопка для мягкого перезапуск
+#define RESET_BTN_PIN 7 // Кнопка для мягкого перезапуска
 
 Servo lServoMot, rServoMot;
 
 GyverPID regulator(1, 0, 0, 10); // Инициализируем коэффициенты регулятора
 
-void(* softResetFunc) (void) = 0; // Soft reset function
+void(* softResetFunc) (void) = 0; // Функция мягкого перезапуска
 
 void setup() {
   Serial.begin(9600);
   Serial.setTimeout(100);
-  pinMode(RESET_BTN_PIN, INPUT_PULLUP); // Start/stop/reset button attachment
+  pinMode(RESET_BTN_PIN, INPUT_PULLUP); // Подключение кнопки Start/stop/reset
   lServoMot.attach(SERVO_MOT_L_PIN);
   rServoMot.attach(SERVO_MOT_R_PIN);
   MotorSpeed(lServoMot, 0); // При старте моторы выключаем
   MotorSpeed(rServoMot, 0);
-  //lServoMot.write(90);
-  //rServoMot.write(90);
-  regulator.setDirection(NORMAL); // Направление регулирования (NORMAL/REVERSE). ПО УМОЛЧАНИЮ СТОИТ NORMAL
-  regulator.setLimits(0, 90); // Пределы регулятора
+  regulator.setDirection(NORMAL); // Направление регулирования (NORMAL/REVERSE)
+  regulator.setLimits(-90, 90); // Пределы регулятора
 }
 
 void loop() {
