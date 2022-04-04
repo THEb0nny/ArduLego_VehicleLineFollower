@@ -9,7 +9,7 @@
 #define SERVO_MOT_R_PIN 4 // Пин правого серво мотора
 #define RESET_BTN_PIN 7 // Кнопка для мягкого перезапуска
 
-Servo lServoMot, rServoMot;
+Servo lServoMot, rServoMot; // Инициализация объектов моторов
 
 GyverPID regulator(1, 0, 0, 10); // Инициализируем коэффициенты регулятора
 
@@ -31,14 +31,19 @@ void loop() {
   if (!digitalRead(RESET_BTN_PIN)) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
   regulator.setpoint = 0; // Передаём ошибку
   float u = regulator.getResultTimer();
-  //MotorsControl(-30, 50);
+  //MotorsControl(-30, 30);
   MotorSpeed(lServoMot, 90); MotorSpeed(rServoMot, -90);
 }
 
 void MotorsControl(int dir, byte speed) {
   int lServoMotSpeed = speed + dir, rServoMotSpeed = speed - dir;
-  int z = speed / max(abs(lServoMotSpeed), abs(rServoMotSpeed)); // Вычисляем отношение желаемой мощности к наибольшей фактической
+  float z = (float) speed / max(abs(lServoMotSpeed), abs(rServoMotSpeed)); // Вычисляем отношение желаемой мощности к наибольшей фактической
+  Serial.println(z);
   lServoMotSpeed *= z, rServoMotSpeed *= z;
+  lServoMotSpeed = constrain(lServoMotSpeed, -90, 90);
+  rServoMotSpeed = constrain(rServoMotSpeed, -90, 90);
+  Serial.print(lServoMotSpeed); Serial.print(", "); Serial.println(rServoMotSpeed);
+  delay(1000);
   MotorSpeed(lServoMot, lServoMotSpeed); MotorSpeed(rServoMot, rServoMotSpeed);
 }
 
@@ -50,6 +55,6 @@ void MotorSpeed(Servo servoMot, int speed) {
   } else {
     speed = map(speed, 0, -90, 90, 0);
   }
-  Serial.println(speed);
+  //Serial.println(speed);
   servoMot.write(speed);
 }
