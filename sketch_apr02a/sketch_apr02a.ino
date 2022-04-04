@@ -12,7 +12,7 @@
 #define RESET_BTN_PIN 7 // Кнопка для мягкого перезапуска
 
 #define SERVO_MOT_L_DIR_MODE 1 // Режим вращения левого мотора, где нормально 1, реверс -1
-#define SERVO_MOT_R_DIR_MODE 1 // Режим вращения правого мотора
+#define SERVO_MOT_R_DIR_MODE -1 // Режим вращения правого мотора
 
 Servo lServoMot, rServoMot; // Инициализация объектов моторов
 GTimer myTimer(10); // Инициализация объекта таймера
