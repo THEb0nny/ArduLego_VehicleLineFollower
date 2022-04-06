@@ -34,6 +34,8 @@
 
 #define LINE_FOLLOW_SET_POINT 320 // Значение уставки, к которому линия должна стремиться
 
+#define MIN_SPEED_FOR_START_SERVO_MOT 10 // Минимальное значение для старта серво мотора
+
 Servo lServoMot, rServoMot; // Инициализация объектов моторов
 GTimer myTimer(10); // Инициализация объекта таймера
 GButton btn(RESET_BTN_PIN);  // Инициализация кнопки
