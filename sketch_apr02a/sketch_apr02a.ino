@@ -77,13 +77,12 @@ void loop() {
     int lineX = 0, lineY = 0;
     for(int i = 0; i < n; i++) // print information about all blobs
     {
-      Serial.print(trackingCam.blob[i].dummy, DEC);
-      Serial.print(" ");
       lineX = trackingCam.blob[i].cx;
       lineY = trackingCam.blob[i].cy;
       Serial.print(lineX, DEC);
       Serial.print(" ");
-      Serial.println(lineY, DEC);
+      Serial.print(lineY, DEC);
+      Serial.println();
     }
     // Считывием и обрабатываем значения с датчиков линии
     int error = LINE_FOLLOW_SET_POINT - lineX; // Нахождение ошибки
