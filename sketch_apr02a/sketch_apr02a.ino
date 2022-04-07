@@ -14,7 +14,7 @@
  * 3-Gnd |O O|  4-Gnd     SDA  -  ID1
  * 5-TX   O O|  6-RX      5V   -  +5
  * 7-SCK |O O|  8-SNS     Gnd  -  Gnd
- * 9-IC0 |O O| 10-ID1     
+ * 9-IC0 |O O| 10-ID1
  */ 
 
 #include <SoftwareSerial.h>
@@ -32,18 +32,18 @@
 #define SERVO_MOT_L_DIR_MODE 1 // Режим вращения левого мотора, где нормально 1, реверс -1
 #define SERVO_MOT_R_DIR_MODE 1 // Режим вращения правого мотора
 
-#define LINE_FOLLOW_SET_POINT 320 // Значение уставки, к которому линия должна стремиться
+#define LINE_FOLLOW_SET_POINT 160 // Значение уставки, к которому линия должна стремиться
 
-#define MIN_SPEED_FOR_START_SERVO_MOT 10 // Минимальное значение для старта серво мотора
+#define MIN_SPEED_FOR_SERVO_MOT 14 // Минимальное значение для старта серво мотора
 
 Servo lServoMot, rServoMot; // Инициализация объектов моторов
-GTimer myTimer(10); // Инициализация объекта таймера
-GButton btn(RESET_BTN_PIN);  // Инициализация кнопки
-TrackingCamI2C trackingCam;
+GTimer myTimer(MS, 10); // Инициализация объекта таймера
+GButton btn(RESET_BTN_PIN); // Инициализация кнопки
+TrackingCamI2C trackingCam; // Инициализация объекта камеры
 
 unsigned long currTime, prevTime, loopTime; // Время
 
-float Kp = 1, Ki = 0, Kd = 0; // Коэффиценты регулятора при старте
+float Kp = 0.25, Ki = 0, Kd = 0; // Коэффиценты регулятора при старте
 
 GyverPID regulator(Kp, Ki, Kd, 10); // Инициализируем коэффициенты регулятора
 
@@ -63,8 +63,11 @@ void setup() {
   trackingCam.init(51, 400000); // cam_id - 1..127, default 51, speed - 100000/400000, cam enables auto detection of master clock 
   delay(5000);
   Serial.println();
-  Serial.println("Ready... Pres btn");
-  while (!btn.isClick());
+  Serial.println("Ready... Press btn");
+  while (true) {
+    if (btn.isSingle()) break;
+  }
+  Serial.println("Go!!!");
 }
 
 void loop() {
@@ -72,27 +75,46 @@ void loop() {
   loopTime = currTime - prevTime;
   prevTime = currTime;
   //if (!digitalRead(RESET_BTN_PIN)) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
-  if (btn.isClick()) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
+  if (btn.isSingle()) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
   if (myTimer.isReady()) { // Раз в 10 мсек выполнять
+    int lineX = 0, lineBottom = 0, lineArea;
+    int maxArea = 0;
     uint8_t n = trackingCam.readBlobs(); // Считать найденные объекты
     Serial.println("All blobs");
-    int lineX = 0, lineY = 0;
     for(int i = 0; i < n; i++) // print information about all blobs
     {
-      lineX = trackingCam.blob[i].cx;
-      lineY = trackingCam.blob[i].cy;
-      Serial.print(lineX, DEC);
-      Serial.print(" ");
-      Serial.print(lineY, DEC);
-      Serial.println();
+      int area = trackingCam.blob[i].area;
+      int cx = trackingCam.blob[i].cx;
+      //int cy = trackingCam.blob[i].cy;
+      int bottom = trackingCam.blob[i].bottom;
+      if (bottom > 230) {
+        if (maxArea < area) {
+          maxArea = area;
+          lineX = cx;
+          //lineY = cy;
+          lineBottom = bottom;
+        }
+      }
+      Serial.print(cx, DEC); Serial.print(" ");
+      //Serial.print(cy, DEC); Serial.print(" ");
+      Serial.print(bottom, DEC); Serial.print(" ");
+      Serial.print(area, DEC); Serial.println();
     }
+    lineArea = maxArea;
+    Serial.print("Line: ");
+    Serial.print(lineX, DEC); Serial.print(" ");
+    //Serial.print(lineY, DEC); Serial.print(" ");
+    Serial.print(lineBottom, DEC); Serial.print(" ");
+    Serial.print(lineArea, DEC); Serial.println();
     // Считывием и обрабатываем значения с датчиков линии
-    int error = LINE_FOLLOW_SET_POINT - lineX; // Нахождение ошибки
+    int error = lineX - LINE_FOLLOW_SET_POINT; // Нахождение ошибки
+    Serial.print("error: "); Serial.println(error);
     regulator.setpoint = error; // Передаём ошибку
     regulator.setDt(loopTime); // Установка dt для регулятора
     float u = regulator.getResult(); // Управляющее воздействие с регулятора
-    //MotorsControl(-30, 30);
-    MotorSpeed(lServoMot, 90, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, -90, SERVO_MOT_R_DIR_MODE);
+    Serial.print("u: "); Serial.println(u);
+    MotorsControl(u, 55);
+    //MotorSpeed(lServoMot, 15, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 15, SERVO_MOT_R_DIR_MODE);
   }
 }
 
@@ -100,10 +122,9 @@ void loop() {
 void MotorsControl(int dir, int speed) {
   int lServoMotSpeed = speed + dir, rServoMotSpeed = speed - dir;
   float z = (float) speed / max(abs(lServoMotSpeed), abs(rServoMotSpeed)); // Вычисляем отношение желаемой мощности к наибольшей фактической
-  Serial.println(z);
   lServoMotSpeed *= z, rServoMotSpeed *= z;
   lServoMotSpeed = constrain(lServoMotSpeed, -90, 90), rServoMotSpeed = constrain(rServoMotSpeed, -90, 90);
-  Serial.print(lServoMotSpeed); Serial.print(", "); Serial.println(rServoMotSpeed);
+  //Serial.print(lServoMotSpeed); Serial.print(", "); Serial.println(rServoMotSpeed);
   MotorSpeed(lServoMot, lServoMotSpeed, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, rServoMotSpeed, SERVO_MOT_R_DIR_MODE);
 }
 
@@ -111,7 +132,7 @@ void MotorsControl(int dir, int speed) {
 void MotorSpeed(Servo servoMot, int speed, int rotateMode) {
   // Servo, 0->FW, 90->stop, 180->BW
   speed = constrain(speed, -90, 90) * rotateMode;
-  Serial.print("servoMotSpeed "); Serial.print(speed);
+  //Serial.print("servoMotSpeed "); Serial.print(speed);
   if (speed >= 0) {
     speed = map(speed, 0, 90, 90, 180);
   } else {
