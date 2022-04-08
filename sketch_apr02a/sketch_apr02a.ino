@@ -43,26 +43,34 @@ TrackingCamI2C trackingCam; // Инициализация объекта кам�
 
 unsigned long currTime, prevTime, loopTime; // Время
 
-float Kp = 0.25, Ki = 0, Kd = 0; // Коэффиценты регулятора при старте
+float Kp = 0.2, Ki = 0, Kd = 0; // Начальные коэффиценты регулятора
 
-GyverPID regulator(Kp, Ki, Kd, 10); // Инициализируем коэффициенты регулятора
+GyverPID regulator(Kp, Ki, Kd, 10); // Инициализируем коэффициенты регулятора и dt
 
 void(* softResetFunc) (void) = 0; // Функция мягкого перезапуска
 
 void setup() {
   Serial.begin(9600);
-  Serial.setTimeout(100);
-  //pinMode(RESET_BTN_PIN, INPUT_PULLUP); // Подключение кнопки Start/stop/reset
-  btn.setType(HIGH_PULL); // LOW_PULL/HIGH_PULL
+  Serial.setTimeout(50);
+  Serial.println();
+  // Подключение кнопки start/stop/reset
+  btn.setDebounce(50); // Настройка антидребезга кнопки (по умолчанию 80 мс)
+  btn.setTimeout(300); // Настройка таймаута на удержание кнопки (по умолчанию 500 мс)
+  btn.setClickTimeout(600); // Настройка таймаута между кликами по кнопке (по умолчанию 300 мс)
+  btn.setType(HIGH_PULL); // HIGH_PULL - кнопка подключена к GND, пин подтянут к VCC, LOW_PULL  - кнопка подключена к VCC, пин подтянут к GND
   btn.setDirection(NORM_OPEN); // NORM_OPEN - нормально-разомкнутая кнопка, NORM_CLOSE - нормально-замкнутая кнопка
   btn.setTickMode(AUTO); // MANUAL - нужно вызывать функцию tick() вручную, AUTO - tick() входит во все остальные функции и опрашивается сама!
+  //
   lServoMot.attach(SERVO_MOT_L_PIN); rServoMot.attach(SERVO_MOT_R_PIN); // Подключение моторов
   MotorSpeed(lServoMot, 0, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 0, SERVO_MOT_R_DIR_MODE); // При старте моторы выключаем
   regulator.setDirection(NORMAL); // Направление регулирования (NORMAL/REVERSE)
   regulator.setLimits(-90, 90); // Пределы регулятора
-  trackingCam.init(51, 400000); // cam_id - 1..127, default 51, speed - 100000/400000, cam enables auto detection of master clock 
-  delay(5000);
-  Serial.println();
+  trackingCam.init(51, 400000); // cam_id - 1..127, default 51, speed - 100000/400000, cam enables auto detection of master clock
+  while (true) { // Ждём пока камера начнёт работать
+    uint8_t n = trackingCam.readBlobs(); // Считать найденные объекты
+    if (n > 0) break; // Если она нашла линию, то выбрасываем из цикла
+    delay(500);
+  }
   Serial.println("Ready... Press btn");
   while (true) {
     if (btn.isSingle()) break;
@@ -74,10 +82,9 @@ void loop() {
   currTime = millis();
   loopTime = currTime - prevTime;
   prevTime = currTime;
-  //if (!digitalRead(RESET_BTN_PIN)) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
   if (btn.isSingle()) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
   if (myTimer.isReady()) { // Раз в 10 мсек выполнять
-    int lineX = 0, lineBottom = 0, lineArea;
+    int lineX = 0, lineBottom = 0;
     int maxArea = 0;
     uint8_t n = trackingCam.readBlobs(); // Считать найденные объекты
     Serial.println("All blobs");
@@ -100,20 +107,20 @@ void loop() {
       Serial.print(bottom, DEC); Serial.print(" ");
       Serial.print(area, DEC); Serial.println();
     }
-    lineArea = maxArea;
+    int lineArea = maxArea;
     Serial.print("Line: ");
     Serial.print(lineX, DEC); Serial.print(" ");
     //Serial.print(lineY, DEC); Serial.print(" ");
     Serial.print(lineBottom, DEC); Serial.print(" ");
     Serial.print(lineArea, DEC); Serial.println();
     // Считывием и обрабатываем значения с датчиков линии
-    int error = lineX - LINE_FOLLOW_SET_POINT; // Нахождение ошибки
+    int error = (lineX == 0 ? 0 : lineX - LINE_FOLLOW_SET_POINT); // Нахождение ошибки
     Serial.print("error: "); Serial.println(error);
     regulator.setpoint = error; // Передаём ошибку
-    regulator.setDt(loopTime); // Установка dt для регулятора
+    //regulator.setDt(loopTime); // Установка dt для регулятора
     float u = regulator.getResult(); // Управляющее воздействие с регулятора
     Serial.print("u: "); Serial.println(u);
-    MotorsControl(u, 55);
+    MotorsControl(u, 35);
     //MotorSpeed(lServoMot, 15, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 15, SERVO_MOT_R_DIR_MODE);
   }
 }
@@ -132,12 +139,12 @@ void MotorsControl(int dir, int speed) {
 void MotorSpeed(Servo servoMot, int speed, int rotateMode) {
   // Servo, 0->FW, 90->stop, 180->BW
   speed = constrain(speed, -90, 90) * rotateMode;
-  //Serial.print("servoMotSpeed "); Serial.print(speed);
+  //Serial.print("servoMotSpeed "); Serial.print(speed); // Вывод скорости, которую передали параметром в функцию
   if (speed >= 0) {
     speed = map(speed, 0, 90, 90, 180);
   } else {
     speed = map(speed, 0, -90, 90, 0);
   }
   servoMot.write(speed);
-  Serial.print(" convertedMotSpeed "); Serial.println(speed);
+  //Serial.print(" convertedMotSpeed "); Serial.println(speed); // Вывод обработанной скорости
 }
