@@ -72,9 +72,7 @@ void setup() {
     delay(500);
   }
   Serial.println("Ready... Press btn");
-  while (true) {
-    if (btn.isSingle()) break;
-  }
+  while (!btn.isClick()); // Цикл, в котором проверяем, что нажали на кнопку
   Serial.println("Go!!!");
 }
 
@@ -82,7 +80,7 @@ void loop() {
   currTime = millis();
   loopTime = currTime - prevTime;
   prevTime = currTime;
-  if (btn.isSingle()) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
+  if (btn.isHolded()) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
   if (myTimer.isReady()) { // Раз в 10 мсек выполнять
     int lineX = 0, lineBottom = 0;
     int maxArea = 0;
