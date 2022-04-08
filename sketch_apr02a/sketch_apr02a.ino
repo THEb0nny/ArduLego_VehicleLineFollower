@@ -60,16 +60,17 @@ void setup() {
   btn.setType(HIGH_PULL); // HIGH_PULL - кнопка подключена к GND, пин подтянут к VCC, LOW_PULL  - кнопка подключена к VCC, пин подтянут к GND
   btn.setDirection(NORM_OPEN); // NORM_OPEN - нормально-разомкнутая кнопка, NORM_CLOSE - нормально-замкнутая кнопка
   btn.setTickMode(AUTO); // MANUAL - нужно вызывать функцию tick() вручную, AUTO - tick() входит во все остальные функции и опрашивается сама!
-  //
-  lServoMot.attach(SERVO_MOT_L_PIN); rServoMot.attach(SERVO_MOT_R_PIN); // Подключение моторов
+  // Моторы
+  lServoMot.attach(SERVO_MOT_L_PIN, 500, 2500); rServoMot.attach(SERVO_MOT_R_PIN, 500, 2500); // Подключение моторов
   MotorSpeed(lServoMot, 0, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 0, SERVO_MOT_R_DIR_MODE); // При старте моторы выключаем
+  // Регулятор
   regulator.setDirection(NORMAL); // Направление регулирования (NORMAL/REVERSE)
   regulator.setLimits(-90, 90); // Пределы регулятора
   trackingCam.init(51, 400000); // cam_id - 1..127, default 51, speed - 100000/400000, cam enables auto detection of master clock
   while (true) { // Ждём пока камера начнёт работать
     uint8_t n = trackingCam.readBlobs(); // Считать найденные объекты
     if (n > 0) break; // Если она нашла линию, то выбрасываем из цикла
-    delay(500);
+    delay(500); // Задержка между проверками
   }
   Serial.println("Ready... Press btn");
   while (!btn.isClick()); // Цикл, в котором проверяем, что нажали на кнопку
@@ -84,9 +85,9 @@ void loop() {
   if (myTimer.isReady()) { // Раз в 10 мсек выполнять
     int lineX = 0, lineBottom = 0;
     int maxArea = 0;
-    uint8_t n = trackingCam.readBlobs(); // Считать найденные объекты
+    uint8_t nBlobs = trackingCam.readBlobs(); // Считать найденные объекты
     Serial.println("All blobs");
-    for(int i = 0; i < n; i++) // print information about all blobs
+    for(int i = 0; i < nBlobs; i++) // print information about all blobs
     {
       int area = trackingCam.blob[i].area;
       int cx = trackingCam.blob[i].cx;
