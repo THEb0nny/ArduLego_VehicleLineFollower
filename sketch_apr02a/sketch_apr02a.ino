@@ -24,17 +24,18 @@
 #include "GyverButton.h"
 #include "TrackingCamI2C.h"
 
-#define RESET_BTN_PIN 7 // Кнопка для мягкого перезапуска
+#define RESET_BTN_PIN 7 // Пин кнопки для мягкого перезапуска
+#define LED_PIN 11 // Пин светодиода
 
 #define SERVO_MOT_L_PIN 2 // Пин левого серво мотора
 #define SERVO_MOT_R_PIN 4 // Пин правого серво мотора
 
 #define SERVO_MOT_L_DIR_MODE 1 // Режим вращения левого мотора, где нормально 1, реверс -1
-#define SERVO_MOT_R_DIR_MODE 1 // Режим вращения правого мотора
+#define SERVO_MOT_R_DIR_MODE -1 // Режим вращения правого мотора
 
 #define LINE_FOLLOW_SET_POINT 160 // Значение уставки, к которому линия должна стремиться
 
-#define MIN_SPEED_FOR_SERVO_MOT 14 // Минимальное значение для старта серво мотора
+#define MIN_SPEED_FOR_SERVO_MOT 11 // Минимальное значение для старта серво мотора
 
 Servo lServoMot, rServoMot; // Инициализация объектов моторов
 GTimer myTimer(MS, 10); // Инициализация объекта таймера
@@ -53,6 +54,7 @@ void setup() {
   Serial.begin(9600);
   Serial.setTimeout(50);
   Serial.println();
+  pinMode(LED_PIN, OUTPUT); // Настраиваем пин светодиода
   // Подключение кнопки start/stop/reset
   btn.setDebounce(50); // Настройка антидребезга кнопки (по умолчанию 80 мс)
   btn.setTimeout(300); // Настройка таймаута на удержание кнопки (по умолчанию 500 мс)
@@ -68,12 +70,15 @@ void setup() {
   regulator.setLimits(-90, 90); // Пределы регулятора
   trackingCam.init(51, 400000); // cam_id - 1..127, default 51, speed - 100000/400000, cam enables auto detection of master clock
   while (true) { // Ждём пока камера начнёт работать
-    uint8_t n = trackingCam.readBlobs(); // Считать найденные объекты
-    if (n > 0) break; // Если она нашла линию, то выбрасываем из цикла
+    uint8_t nBlobs = trackingCam.readBlobs(); // Считать найденные объекты
+    Serial.println(nBlobs); // Выводим количество найденных blobs
+    if (nBlobs > 0) break; // Если она нашла линию, то выбрасываем из цикла
     delay(500); // Задержка между проверками
   }
+  digitalWrite(LED_PIN, HIGH);
   Serial.println("Ready... Press btn");
   while (!btn.isClick()); // Цикл, в котором проверяем, что нажали на кнопку
+  digitalWrite(LED_PIN, LOW);
   Serial.println("Go!!!");
 }
 
@@ -87,36 +92,33 @@ void loop() {
     int maxArea = 0;
     uint8_t nBlobs = trackingCam.readBlobs(); // Считать найденные объекты
     Serial.println("All blobs");
-    for(int i = 0; i < nBlobs; i++) // print information about all blobs
+    for(int i = 0; i < nBlobs; i++) // Печать информации о blobs
     {
       int area = trackingCam.blob[i].area;
       int cx = trackingCam.blob[i].cx;
-      //int cy = trackingCam.blob[i].cy;
       int bottom = trackingCam.blob[i].bottom;
-      if (bottom > 230) {
-        if (maxArea < area) {
+      if (bottom > 230) { // Если линия начинается с нижней части картинки камеры
+        if (maxArea < area) { // Если площадь фигуры-линии больше других
           maxArea = area;
           lineX = cx;
-          //lineY = cy;
           lineBottom = bottom;
         }
       }
+      // Печать информации о фигуре
       Serial.print(cx, DEC); Serial.print(" ");
-      //Serial.print(cy, DEC); Serial.print(" ");
       Serial.print(bottom, DEC); Serial.print(" ");
       Serial.print(area, DEC); Serial.println();
     }
     int lineArea = maxArea;
-    Serial.print("Line: ");
+    Serial.print("Line: "); // Пеяать информации о выбранной фигуре
     Serial.print(lineX, DEC); Serial.print(" ");
-    //Serial.print(lineY, DEC); Serial.print(" ");
     Serial.print(lineBottom, DEC); Serial.print(" ");
     Serial.print(lineArea, DEC); Serial.println();
     // Считывием и обрабатываем значения с датчиков линии
-    int error = (lineX == 0 ? 0 : lineX - LINE_FOLLOW_SET_POINT); // Нахождение ошибки
+    int error = (lineX == 0 ? 0 : lineX - LINE_FOLLOW_SET_POINT); // Нахождение ошибки, если линии нет, то значение направления 0
     Serial.print("error: "); Serial.println(error);
     regulator.setpoint = error; // Передаём ошибку
-    //regulator.setDt(loopTime); // Установка dt для регулятора
+    regulator.setDt(loopTime); // Установка dt для регулятора
     float u = regulator.getResult(); // Управляющее воздействие с регулятора
     Serial.print("u: "); Serial.println(u);
     MotorsControl(u, 35);
@@ -139,11 +141,8 @@ void MotorSpeed(Servo servoMot, int speed, int rotateMode) {
   // Servo, 0->FW, 90->stop, 180->BW
   speed = constrain(speed, -90, 90) * rotateMode;
   //Serial.print("servoMotSpeed "); Serial.print(speed); // Вывод скорости, которую передали параметром в функцию
-  if (speed >= 0) {
-    speed = map(speed, 0, 90, 90, 180);
-  } else {
-    speed = map(speed, 0, -90, 90, 0);
-  }
+  if (speed >= 0) speed = map(speed, 0, 90, 90, 180);
+  else speed = map(speed, 0, -90, 90, 0);
   servoMot.write(speed);
   //Serial.print(" convertedMotSpeed "); Serial.println(speed); // Вывод обработанной скорости
 }
