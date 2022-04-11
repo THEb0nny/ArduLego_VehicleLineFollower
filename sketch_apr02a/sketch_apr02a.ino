@@ -81,7 +81,7 @@ void loop() {
   currTime = millis();
   loopTime = currTime - prevTime;
   prevTime = currTime;
-  if (btn.isHolded()) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
+  if (btn.isClick()) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
   if (myTimer.isReady()) { // Раз в 10 мсек выполнять
     int lineX = 0, lineBottom = 0;
     int maxArea = 0;
@@ -120,7 +120,7 @@ void loop() {
     float u = regulator.getResult(); // Управляющее воздействие с регулятора
     Serial.print("u: "); Serial.println(u);
     MotorsControl(u, 35);
-    //MotorSpeed(lServoMot, 15, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 15, SERVO_MOT_R_DIR_MODE);
+    //MotorSpeed(lServoMot, 11, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 11, SERVO_MOT_R_DIR_MODE);
   }
 }
 
