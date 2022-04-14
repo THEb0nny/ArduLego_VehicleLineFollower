@@ -44,15 +44,17 @@ TrackingCamI2C trackingCam; // Инициализация объекта кам�
 
 unsigned long currTime, prevTime, loopTime; // Время
 
-float Kp = 0.2, Ki = 0, Kd = 0; // Начальные коэффиценты регулятора
+float Kp = 0.5, Ki = 0, Kd = 0; // Начальные коэффиценты регулятора
 
 GyverPID regulator(Kp, Ki, Kd, 10); // Инициализируем коэффициенты регулятора и dt
+
+int speed = 35;
 
 void(* softResetFunc) (void) = 0; // Функция мягкого перезапуска
 
 void setup() {
   Serial.begin(9600);
-  Serial.setTimeout(50);
+  Serial.setTimeout(10);
   Serial.println();
   pinMode(LED_PIN, OUTPUT); // Настраиваем пин светодиода
   // Подключение кнопки start/stop/reset
@@ -72,7 +74,7 @@ void setup() {
   while (true) { // Ждём пока камера начнёт работать
     uint8_t nBlobs = trackingCam.readBlobs(); // Считать найденные объекты
     Serial.println(nBlobs); // Выводим количество найденных blobs
-    if (nBlobs > 0) break; // Если она нашла линию, то выбрасываем из цикла
+    if (nBlobs == 1) break; // Если она нашла линию, то выбрасываем из цикла
     delay(500); // Задержка между проверками
   }
   digitalWrite(LED_PIN, HIGH);
@@ -86,6 +88,29 @@ void loop() {
   currTime = millis();
   loopTime = currTime - prevTime;
   prevTime = currTime;
+  if (Serial.available() > 2) {
+    String command = Serial.readStringUntil('\n');    
+    command.trim();
+    char incoming = command[0];
+    command.remove(0, 1);
+    float value = command.toFloat();
+    switch (incoming) {
+      case 'p':
+        regulator.Kp = value;
+        break;
+      case 'i':
+        regulator.Ki = value;
+        break;
+      case 'd':
+        regulator.Kd = value;
+        break;
+      case 's':
+        speed = value;
+        break;
+      default:
+        break;
+    }
+  }
   if (btn.isClick()) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
   if (myTimer.isReady()) { // Раз в 10 мсек выполнять
     int lineX = 0, lineBottom = 0;
@@ -121,7 +146,7 @@ void loop() {
     regulator.setDt(loopTime); // Установка dt для регулятора
     float u = regulator.getResult(); // Управляющее воздействие с регулятора
     Serial.print("u: "); Serial.println(u);
-    MotorsControl(u, 35);
+    MotorsControl(u, speed);
     //MotorSpeed(lServoMot, 11, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 11, SERVO_MOT_R_DIR_MODE);
   }
 }
