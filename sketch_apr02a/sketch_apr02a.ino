@@ -24,6 +24,8 @@
 #include "GyverButton.h"
 #include "TrackingCamI2C.h"
 
+#define DEBUG true
+
 #define RESET_BTN_PIN 7 // Пин кнопки для мягкого перезапуска
 #define LED_PIN 11 // Пин светодиода
 
@@ -35,7 +37,7 @@
 
 #define LINE_FOLLOW_SET_POINT 160 // Значение уставки, к которому линия должна стремиться
 
-#define MIN_SPEED_FOR_SERVO_MOT 11 // Минимальное значение для старта серво мотора
+#define MIN_SPEED_FOR_SERVO_MOT 10 // Минимальное значение для старта серво мотора
 
 Servo lServoMot, rServoMot; // Инициализация объектов моторов
 GTimer myTimer(MS, 10); // Инициализация объекта таймера
@@ -44,11 +46,13 @@ TrackingCamI2C trackingCam; // Инициализация объекта кам�
 
 unsigned long currTime, prevTime, loopTime; // Время
 
-float Kp = 0.5, Ki = 0, Kd = 0; // Начальные коэффиценты регулятора
+float Kp_hard = 0.5, Kp_easy = 0.3;
+float Kp = Kp_easy, Ki = 0, Kd = 0; // Начальные коэффиценты регулятора
 
 GyverPID regulator(Kp, Ki, Kd, 10); // Инициализируем коэффициенты регулятора и dt
 
-int speed = 35;
+int speedEasyLine = 45, speedHardLine = 35;
+int speed = speedEasyLine;
 
 void(* softResetFunc) (void) = 0; // Функция мягкого перезапуска
 
@@ -67,6 +71,7 @@ void setup() {
   // Моторы
   lServoMot.attach(SERVO_MOT_L_PIN, 500, 2500); rServoMot.attach(SERVO_MOT_R_PIN, 500, 2500); // Подключение моторов
   MotorSpeed(lServoMot, 0, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 0, SERVO_MOT_R_DIR_MODE); // При старте моторы выключаем
+  //lServoMot.write(90); rServoMot.write(90);
   // Регулятор
   regulator.setDirection(NORMAL); // Направление регулирования (NORMAL/REVERSE)
   regulator.setLimits(-90, 90); // Пределы регулятора
@@ -89,23 +94,32 @@ void loop() {
   loopTime = currTime - prevTime;
   prevTime = currTime;
   if (Serial.available() > 2) {
+    // Встроенная функция readStringUntil будет читать все данные, пришедшие в UART до специального символа — '\n' (перенос строки).
+    // Он появляется в паре с '\r' (возврат каретки) при передаче данных функцией Serial.println().
+    // Эти символы удобно передавать для разделения команд, но не очень удобно обрабатывать. Удаляем их функцией trim().
     String command = Serial.readStringUntil('\n');    
     command.trim();
-    char incoming = command[0];
+    String incoming = String(char(command[0])) + String(char(command[1]));
     command.remove(0, 1);
     float value = command.toFloat();
     switch (incoming) {
-      case 'p':
-        regulator.Kp = value;
+      case "pr":
+        Kp_easy = value;
         break;
-      case 'i':
+      case "ph":
+        Kp_hard = value;
+        break;
+      case "ii":
         regulator.Ki = value;
         break;
-      case 'd':
+      case "dd":
         regulator.Kd = value;
         break;
-      case 's':
-        speed = value;
+      case "se":
+        speedEasyLine = value;
+        break;
+      case "sh":
+        speedHardLine = value;
         break;
       default:
         break;
@@ -113,41 +127,61 @@ void loop() {
   }
   if (btn.isClick()) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
   if (myTimer.isReady()) { // Раз в 10 мсек выполнять
-    int lineX = 0, lineBottom = 0;
+    int lineX = 0, lineBottom = 0, lineL = 0, lineR = 0;
     int maxArea = 0;
     uint8_t nBlobs = trackingCam.readBlobs(); // Считать найденные объекты
-    Serial.println("All blobs");
     for(int i = 0; i < nBlobs; i++) // Печать информации о blobs
     {
       int area = trackingCam.blob[i].area;
       int cx = trackingCam.blob[i].cx;
       int bottom = trackingCam.blob[i].bottom;
+      int left = trackingCam.blob[i].left;
+      int right = trackingCam.blob[i].right;
       if (bottom > 230) { // Если линия начинается с нижней части картинки камеры
         if (maxArea < area) { // Если площадь фигуры-линии больше других
           maxArea = area;
           lineX = cx;
           lineBottom = bottom;
+          lineL = left;
+          lineR = right;
         }
       }
-      // Печать информации о фигуре
-      Serial.print(cx, DEC); Serial.print(" ");
-      Serial.print(bottom, DEC); Serial.print(" ");
-      Serial.print(area, DEC); Serial.println();
+      if (DEBUG) {
+        // Печать информации о фигуре
+        Serial.print(cx, DEC); Serial.print(" ");
+        Serial.print(bottom, DEC); Serial.print(" ");
+        Serial.print(left, DEC); Serial.print(" ");
+        Serial.print(right, DEC); Serial.print(" ");
+        Serial.print(area, DEC); Serial.println();
+      }
     }
     int lineArea = maxArea;
-    Serial.print("Line: "); // Пеяать информации о выбранной фигуре
-    Serial.print(lineX, DEC); Serial.print(" ");
-    Serial.print(lineBottom, DEC); Serial.print(" ");
-    Serial.print(lineArea, DEC); Serial.println();
     // Считывием и обрабатываем значения с датчиков линии
     int error = (lineX == 0 ? 0 : lineX - LINE_FOLLOW_SET_POINT); // Нахождение ошибки, если линии нет, то значение направления 0
-    Serial.print("error: "); Serial.println(error);
     regulator.setpoint = error; // Передаём ошибку
+    if (lineL < 20 || lineR > 300) {
+      Kp = Kp_hard;
+      speed = speedHardLine;
+    } else {
+      speed = speedEasyLine;
+      Kp = Kp_easy;
+    }
+    regulator.Kp = Kp;
     regulator.setDt(loopTime); // Установка dt для регулятора
     float u = regulator.getResult(); // Управляющее воздействие с регулятора
-    Serial.print("u: "); Serial.println(u);
+    if (DEBUG) {
+      Serial.print("Kp: "); Serial.println(Kp);
+      Serial.print("Line: "); // Пеяать информации о выбранной фигуре
+      Serial.print(lineX, DEC); Serial.print(" ");
+      Serial.print(lineBottom, DEC); Serial.print(" ");
+      Serial.print(lineL, DEC); Serial.print(" ");
+      Serial.print(lineR, DEC); Serial.print(" ");
+      Serial.print(lineArea, DEC); Serial.println();
+      Serial.print("error: "); Serial.println(error);
+      Serial.print("u: "); Serial.println(u);
+    }
     MotorsControl(u, speed);
-    //MotorSpeed(lServoMot, 11, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 11, SERVO_MOT_R_DIR_MODE);
+    //MotorSpeed(lServoMot, 5, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 11, SERVO_MOT_R_DIR_MODE);
   }
 }
 
