@@ -71,9 +71,9 @@ void setup() {
   Serial.println();
   pinMode(LED_PIN, OUTPUT); // Настраиваем пин светодиода
   // Подключение кнопки start/stop/reset
-  btn.setDebounce(50); // Настройка антидребезга кнопки (по умолчанию 80 мс)
-  btn.setTimeout(300); // Настройка таймаута на удержание кнопки (по умолчанию 500 мс)
-  btn.setClickTimeout(600); // Настройка таймаута между кликами по кнопке (по умолчанию 300 мс)
+  btn.setDebounce(80); // Настройка антидребезга кнопки (по умолчанию 80 мс)
+  btn.setTimeout(500); // Настройка таймаута на удержание кнопки (по умолчанию 500 мс)
+  btn.setClickTimeout(300); // Настройка таймаута между кликами по кнопке (по умолчанию 300 мс)
   btn.setType(HIGH_PULL); // HIGH_PULL - кнопка подключена к GND, пин подтянут к VCC, LOW_PULL  - кнопка подключена к VCC, пин подтянут к GND
   btn.setDirection(NORM_OPEN); // NORM_OPEN - нормально-разомкнутая кнопка, NORM_CLOSE - нормально-замкнутая кнопка
   btn.setTickMode(AUTO); // MANUAL - нужно вызывать функцию tick() вручную, AUTO - tick() входит во все остальные функции и опрашивается сама!
@@ -106,15 +106,15 @@ void loop() {
     // Встроенная функция readStringUntil будет читать все данные, пришедшие в UART до специального символа — '\n' (перенос строки).
     // Он появляется в паре с '\r' (возврат каретки) при передаче данных функцией Serial.println().
     // Эти символы удобно передавать для разделения команд, но не очень удобно обрабатывать. Удаляем их функцией trim().
-    String command = Serial.readStringUntil('\n');    
+    String command = Serial.readStringUntil('\n');
     command.trim();
     byte strIndex = -1; // Переменая для хронения индекса вхождения цифры в входной строке
-    // Поиск первого вхождения цифры в подстроку
-    for (byte i = 0; i < command.length(); i++) {
-      strIndex = command.indexOf(i);
-      if (strIndex != -1) break;
+    // Поиск первого вхождения цифры от 0 по 9 в подстроку
+    for (int i = 0; i < 10; i++) {
+      strIndex = command.indexOf(String(i));
+      if (strIndex != -1 && strIndex != 255) break;
     }
-    String incoming = command.substring(0, strIndex + 1);
+    String incoming = command.substring(0, strIndex);
     String valueStr = command.substring(strIndex, command.length());
     float value = valueStr.toFloat();
     if (incoming == "pe") {
@@ -133,6 +133,9 @@ void loop() {
     } else if (incoming == "sh") {
       speedHardLine = value;
     }
+    Serial.print(incoming);
+    Serial.print(" ");
+    Serial.println(value);
   }
   if (btn.isClick()) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
   if (myTimer.isReady()) { // Раз в 10 мсек выполнять
@@ -150,20 +153,16 @@ void loop() {
       if (bottom > LINE_Y_BOTTOM_START) { // Если линия начинается с нижней части картинки камеры
         if (maxArea < area) { // Если площадь текущей фигуры-линии больше других
           maxArea = area;
-          lineX = cx;
-          lineY = cy;
+          lineX = cx; lineY = cy;
           lineB = bottom;
-          lineL = left;
-          lineR = right;
+          lineL = left; lineR = right;
         }
       }
       if (DEBUG) {
         // Печать информации о фигуре
-        Serial.print(cx, DEC); Serial.print(" ");
-        Serial.print(cy, DEC); Serial.print(" ");
+        Serial.print(cx, DEC); Serial.print(" "); Serial.print(cy, DEC); Serial.print(" ");
         Serial.print(bottom, DEC); Serial.print(" ");
-        Serial.print(left, DEC); Serial.print(" ");
-        Serial.print(right, DEC); Serial.print(" ");
+        Serial.print(left, DEC); Serial.print(" "); Serial.print(right, DEC); Serial.print(" ");
         Serial.print(area, DEC); Serial.println();
       }
     }
@@ -191,10 +190,8 @@ void loop() {
       Serial.print("Kp: "); Serial.println(Kp);
       Serial.print("Line: "); // Пеяать информации о выбранной фигуре
       Serial.print(lineX, DEC); Serial.print(" ");
-      Serial.print(lineY, DEC); Serial.print(" ");
-      Serial.print(lineB, DEC); Serial.print(" ");
-      Serial.print(lineL, DEC); Serial.print(" ");
-      Serial.print(lineR, DEC); Serial.print(" ");
+      Serial.print(lineY, DEC); Serial.print(" "); Serial.print(lineB, DEC); Serial.print(" ");
+      Serial.print(lineL, DEC); Serial.print(" "); Serial.print(lineR, DEC); Serial.print(" ");
       Serial.print(lineArea, DEC); Serial.println();
       Serial.print("error: "); Serial.println(error);
       Serial.print("u: "); Serial.println(u);
