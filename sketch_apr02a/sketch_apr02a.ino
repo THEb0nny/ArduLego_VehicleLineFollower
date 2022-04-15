@@ -3,8 +3,8 @@
 // https://alexgyver.ru/gyvertimer/
 // https://alexgyver.ru/gyverbutton/
 // https://disk.yandex.ru/i/8yCIjSCpGo80LA
-// https://disk.yandex.ru/i/LAgGz3PMc98vSg
 // https://disk.yandex.ru/i/Jad22IaI3DUQwj
+// https://disk.yandex.ru/i/LAgGz3PMc98vSg
 
 /** Arduino I2C blobs example.
  * Settings: Blob detector, I2C, addr 51, Dynamixel API, 5V.
@@ -15,7 +15,9 @@
  * 5-TX   O O|  6-RX      5V   -  +5
  * 7-SCK |O O|  8-SNS     Gnd  -  Gnd
  * 9-IC0 |O O| 10-ID1
- */ 
+*/
+
+#define PID_OPTIMIZED_I // Параметр для оптимизации суммы регулятора
 
 #include <SoftwareSerial.h>
 #include <Servo.h>
@@ -24,7 +26,7 @@
 #include "GyverButton.h"
 #include "TrackingCamI2C.h"
 
-#define DEBUG true
+#define DEBUG true // Дебаг
 
 #define RESET_BTN_PIN 7 // Пин кнопки для мягкого перезапуска
 #define LED_PIN 11 // Пин светодиода
@@ -36,8 +38,15 @@
 #define SERVO_MOT_R_DIR_MODE -1 // Режим вращения правого мотора
 
 #define LINE_FOLLOW_SET_POINT 160 // Значение уставки, к которому линия должна стремиться
-
 #define MIN_SPEED_FOR_SERVO_MOT 10 // Минимальное значение для старта серво мотора
+
+#define LINE_HORISONTAL_POS_THERSHOLD_LEFT 20
+#define LINE_HORISONTAL_POS_THERSHOLD_RIGHT 320 - LINE_HORISONTAL_POS_THERSHOLD_LEFT
+
+#define LINE_X_IN_CENTER_LEFT_BOARD LINE_FOLLOW_SET_POINT - 30
+#define LINE_X_IN_CENTER_RIGHT_BOARD LINE_FOLLOW_SET_POINT + 30
+
+#define LINE_Y_BOTTOM_START 230 // Значение от которого стоит отмечать, что мы нашли действительно линию
 
 Servo lServoMot, rServoMot; // Инициализация объектов моторов
 GTimer myTimer(MS, 10); // Инициализация объекта таймера
@@ -99,49 +108,51 @@ void loop() {
     // Эти символы удобно передавать для разделения команд, но не очень удобно обрабатывать. Удаляем их функцией trim().
     String command = Serial.readStringUntil('\n');    
     command.trim();
-    String incoming = String(char(command[0])) + String(char(command[1]));
-    command.remove(0, 1);
-    float value = command.toFloat();
-    switch (incoming) {
-      case "pr":
-        Kp_easy = value;
-        break;
-      case "ph":
-        Kp_hard = value;
-        break;
-      case "ii":
-        regulator.Ki = value;
-        break;
-      case "dd":
-        regulator.Kd = value;
-        break;
-      case "se":
-        speedEasyLine = value;
-        break;
-      case "sh":
-        speedHardLine = value;
-        break;
-      default:
-        break;
+    byte strIndex = -1; // Переменая для хронения индекса вхождения цифры в входной строке
+    // Поиск первого вхождения цифры в подстроку
+    for (byte i = 0; i < command.length(); i++) {
+      strIndex = command.indexOf(i);
+      if (strIndex != -1) break;
+    }
+    String incoming = command.substring(0, strIndex + 1);
+    String valueStr = command.substring(strIndex, command.length());
+    float value = valueStr.toFloat();
+    if (incoming == "pe") {
+      Kp_easy = value;
+      regulator.Kp = Kp;
+    } else if (incoming == "ph") {
+      Kp_hard = value;
+      regulator.Kp = Kp;
+    } else if (incoming == "i") {
+      regulator.Ki = value;
+      regulator.integral = 0;
+    } else if (incoming == "d") {
+      regulator.Kd = value;
+    } else if (incoming == "se") {
+      speedEasyLine = value;
+    } else if (incoming == "sh") {
+      speedHardLine = value;
     }
   }
   if (btn.isClick()) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
   if (myTimer.isReady()) { // Раз в 10 мсек выполнять
-    int lineX = 0, lineBottom = 0, lineL = 0, lineR = 0;
+    int lineX = 0, lineY = 0, lineB = 0, lineL = 0, lineR = 0;
     int maxArea = 0;
     uint8_t nBlobs = trackingCam.readBlobs(); // Считать найденные объекты
     for(int i = 0; i < nBlobs; i++) // Печать информации о blobs
     {
       int area = trackingCam.blob[i].area;
       int cx = trackingCam.blob[i].cx;
+      int cy = trackingCam.blob[i].cy;
       int bottom = trackingCam.blob[i].bottom;
       int left = trackingCam.blob[i].left;
       int right = trackingCam.blob[i].right;
-      if (bottom > 230) { // Если линия начинается с нижней части картинки камеры
-        if (maxArea < area) { // Если площадь фигуры-линии больше других
+      if (bottom > LINE_Y_BOTTOM_START) { // Если линия начинается с нижней части картинки камеры
+        if (maxArea < area) { // Если площадь текущей фигуры-линии больше других
           maxArea = area;
           lineX = cx;
-          lineBottom = bottom;
+          lineY = cy;
+          lineB = bottom;
           lineL = left;
           lineR = right;
         }
@@ -149,6 +160,7 @@ void loop() {
       if (DEBUG) {
         // Печать информации о фигуре
         Serial.print(cx, DEC); Serial.print(" ");
+        Serial.print(cy, DEC); Serial.print(" ");
         Serial.print(bottom, DEC); Serial.print(" ");
         Serial.print(left, DEC); Serial.print(" ");
         Serial.print(right, DEC); Serial.print(" ");
@@ -157,31 +169,36 @@ void loop() {
     }
     int lineArea = maxArea;
     // Считывием и обрабатываем значения с датчиков линии
-    int error = (lineX == 0 ? 0 : lineX - LINE_FOLLOW_SET_POINT); // Нахождение ошибки, если линии нет, то значение направления 0
-    regulator.setpoint = error; // Передаём ошибку
-    if (lineL < 20 || lineR > 300) {
+    int error = (lineX == 0 ? 0 : lineX - LINE_FOLLOW_SET_POINT); // Нахождение ошибки, если линия не найдена, то значение направления 0
+    regulator.setpoint = error; // Передаём ошибку регулятору
+    // Если линия замечена с края кадра
+    if (lineL < LINE_HORISONTAL_POS_THERSHOLD_LEFT || lineR > LINE_HORISONTAL_POS_THERSHOLD_RIGHT) {
       Kp = Kp_hard;
+      if (regulator.Kp != Kp) regulator.Kp = Kp;
       speed = speedHardLine;
     } else {
-      speed = speedEasyLine;
       Kp = Kp_easy;
+      if (regulator.Kp != Kp) regulator.Kp = Kp;
+      speed = speedEasyLine;
     }
-    regulator.Kp = Kp;
+    // Обнуляем интегральную составляющую регулятора, если линия близка к центру
+    if (lineX > LINE_X_IN_CENTER_LEFT_BOARD || LINE_X_IN_CENTER_RIGHT_BOARD < lineX) regulator.integral = 0;
     regulator.setDt(loopTime); // Установка dt для регулятора
     float u = regulator.getResult(); // Управляющее воздействие с регулятора
+    MotorsControl(u, speed);
+    //MotorSpeed(lServoMot, 5, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 11, SERVO_MOT_R_DIR_MODE);
     if (DEBUG) {
       Serial.print("Kp: "); Serial.println(Kp);
       Serial.print("Line: "); // Пеяать информации о выбранной фигуре
       Serial.print(lineX, DEC); Serial.print(" ");
-      Serial.print(lineBottom, DEC); Serial.print(" ");
+      Serial.print(lineY, DEC); Serial.print(" ");
+      Serial.print(lineB, DEC); Serial.print(" ");
       Serial.print(lineL, DEC); Serial.print(" ");
       Serial.print(lineR, DEC); Serial.print(" ");
       Serial.print(lineArea, DEC); Serial.println();
       Serial.print("error: "); Serial.println(error);
       Serial.print("u: "); Serial.println(u);
     }
-    MotorsControl(u, speed);
-    //MotorSpeed(lServoMot, 5, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 11, SERVO_MOT_R_DIR_MODE);
   }
 }
 
