@@ -26,7 +26,7 @@
 #include "GyverButton.h"
 #include "TrackingCamI2C.h"
 
-#define DEBUG true // Дебаг
+#define DEBUG false // Дебаг
 
 #define RESET_BTN_PIN 7 // Пин кнопки для мягкого перезапуска
 #define LED_PIN 11 // Пин светодиода
@@ -40,11 +40,11 @@
 #define LINE_FOLLOW_SET_POINT 160 // Значение уставки, к которому линия должна стремиться
 #define MIN_SPEED_FOR_SERVO_MOT 10 // Минимальное значение для старта серво мотора
 
-#define LINE_HORISONTAL_POS_THERSHOLD_LEFT 20
-#define LINE_HORISONTAL_POS_THERSHOLD_RIGHT 320 - LINE_HORISONTAL_POS_THERSHOLD_LEFT
+#define LINE_HORISONTAL_POS_THERSHOLD_LEFT 20 // Левая граница определения сложного поворота
+#define LINE_HORISONTAL_POS_THERSHOLD_RIGHT 320 - LINE_HORISONTAL_POS_THERSHOLD_LEFT // Правая граница определения сложного поворота
 
-#define LINE_X_IN_CENTER_LEFT_BOARD LINE_FOLLOW_SET_POINT - 30
-#define LINE_X_IN_CENTER_RIGHT_BOARD LINE_FOLLOW_SET_POINT + 30
+#define LINE_X_IN_CENTER_LEFT_BOARD LINE_FOLLOW_SET_POINT - 30 // Определние линии в центре, левая граница
+#define LINE_X_IN_CENTER_RIGHT_BOARD LINE_FOLLOW_SET_POINT + 30 // Определние линии в центре, правая граница
 
 #define LINE_Y_BOTTOM_START 230 // Значение от которого стоит отмечать, что мы нашли действительно линию
 
@@ -55,12 +55,12 @@ TrackingCamI2C trackingCam; // Инициализация объекта кам�
 
 unsigned long currTime, prevTime, loopTime; // Время
 
-float Kp_hard = 0.5, Kp_easy = 0.3;
+float Kp_easy = 0.3, Kp_hard = 1.5; // Пропрорциональные коэффиценты, при прямых участках и поворотах
 float Kp = Kp_easy, Ki = 0, Kd = 0; // Начальные коэффиценты регулятора
 
 GyverPID regulator(Kp, Ki, Kd, 10); // Инициализируем коэффициенты регулятора и dt
 
-int speedEasyLine = 45, speedHardLine = 35;
+int speedEasyLine = 50, speedHardLine = 35;
 int speed = speedEasyLine;
 
 void(* softResetFunc) (void) = 0; // Функция мягкого перезапуска
@@ -91,10 +91,10 @@ void setup() {
     if (nBlobs == 1) break; // Если она нашла линию, то выбрасываем из цикла
     delay(500); // Задержка между проверками
   }
-  digitalWrite(LED_PIN, HIGH);
+  digitalWrite(LED_PIN, HIGH); // Включаем светодио
   Serial.println("Ready... Press btn");
   while (!btn.isClick()); // Цикл, в котором проверяем, что нажали на кнопку
-  digitalWrite(LED_PIN, LOW);
+  digitalWrite(LED_PIN, LOW); // Выключаем светодиод
   Serial.println("Go!!!");
 }
 
@@ -108,11 +108,12 @@ void loop() {
     // Эти символы удобно передавать для разделения команд, но не очень удобно обрабатывать. Удаляем их функцией trim().
     String command = Serial.readStringUntil('\n');
     command.trim();
-    byte strIndex = -1; // Переменая для хронения индекса вхождения цифры в входной строке
+    command.replace(" ", ""); // Убрать возможные пробелы между символами
+    byte strIndex = command.length(); // Переменая для хронения индекса вхождения цифры в входной строке
     // Поиск первого вхождения цифры от 0 по 9 в подстроку
-    for (int i = 0; i < 10; i++) {
-      strIndex = command.indexOf(String(i));
-      if (strIndex != -1 && strIndex != 255) break;
+    for (byte i = 0; i < 10; i++) {
+      byte index = command.indexOf(String(i));
+      if (index < strIndex && index != 255) strIndex = index;
     }
     String incoming = command.substring(0, strIndex);
     String valueStr = command.substring(strIndex, command.length());
@@ -134,7 +135,7 @@ void loop() {
       speedHardLine = value;
     }
     Serial.print(incoming);
-    Serial.print(" ");
+    Serial.print(" = ");
     Serial.println(value);
   }
   if (btn.isClick()) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
@@ -193,9 +194,9 @@ void loop() {
       Serial.print(lineY, DEC); Serial.print(" "); Serial.print(lineB, DEC); Serial.print(" ");
       Serial.print(lineL, DEC); Serial.print(" "); Serial.print(lineR, DEC); Serial.print(" ");
       Serial.print(lineArea, DEC); Serial.println();
-      Serial.print("error: "); Serial.println(error);
-      Serial.print("u: "); Serial.println(u);
     }
+    Serial.print("error: "); Serial.println(error);
+    Serial.print("u: "); Serial.println(u);
   }
 }
 
