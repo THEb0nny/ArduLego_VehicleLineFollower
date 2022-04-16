@@ -26,7 +26,7 @@
 #include "GyverButton.h"
 #include "TrackingCamI2C.h"
 
-#define DEBUG false // Дебаг
+#define DEBUG false // Дебаг true/false
 
 #define RESET_BTN_PIN 7 // Пин кнопки для мягкого перезапуска
 #define LED_PIN 11 // Пин светодиода
@@ -40,11 +40,13 @@
 #define LINE_FOLLOW_SET_POINT 160 // Значение уставки, к которому линия должна стремиться
 #define MIN_SPEED_FOR_SERVO_MOT 10 // Минимальное значение для старта серво мотора
 
-#define LINE_HORISONTAL_POS_THERSHOLD_LEFT 20 // Левая граница определения сложного поворота
-#define LINE_HORISONTAL_POS_THERSHOLD_RIGHT 320 - LINE_HORISONTAL_POS_THERSHOLD_LEFT // Правая граница определения сложного поворота
+#define LINE_HORISONTAL_POS_BORDER 20
+#define LINE_HORISONTAL_POS_THERSHOLD_LEFT LINE_HORISONTAL_POS_BORDER // Левая граница определения сложного поворота
+#define LINE_HORISONTAL_POS_THERSHOLD_RIGHT 320 - LINE_HORISONTAL_POS_BORDER // Правая граница определения сложного поворота
 
-#define LINE_X_IN_CENTER_LEFT_BOARD LINE_FOLLOW_SET_POINT - 30 // Определние линии в центре, левая граница
-#define LINE_X_IN_CENTER_RIGHT_BOARD LINE_FOLLOW_SET_POINT + 30 // Определние линии в центре, правая граница
+#define LINE_X_IN_CENTER_BORDER_VAL 15 // Значение отклонения прямого участка 
+#define LINE_X_IN_CENTER_LEFT_BOARD LINE_FOLLOW_SET_POINT - LINE_X_IN_CENTER_BORDER_VAL // Определние линии в центре, левая граница
+#define LINE_X_IN_CENTER_RIGHT_BOARD LINE_FOLLOW_SET_POINT + LINE_X_IN_CENTER_BORDER_VAL // Определние линии в центре, правая граница
 
 #define LINE_Y_BOTTOM_START 230 // Значение от которого стоит отмечать, что мы нашли действительно линию
 
@@ -55,13 +57,14 @@ TrackingCamI2C trackingCam; // Инициализация объекта кам�
 
 unsigned long currTime, prevTime, loopTime; // Время
 
-float Kp_easy = 0.3, Kp_hard = 1.5; // Пропрорциональные коэффиценты, при прямых участках и поворотах
-float Kp = Kp_easy, Ki = 0, Kd = 0; // Начальные коэффиценты регулятора
+float Kp_easy = 0.3, Kp_hard = 2.7; // Пропрорциональные коэффиценты, при прямых участках и поворотах
+float Kd_easy = 0.5, Kd_hard = 0; // Дифференциальные коэффициенты, при прямых участках и поворотах
+float Kp = Kp_easy, Ki = 0.01, Kd = Kd_easy; // Начальные коэффиценты регулятора
 
 GyverPID regulator(Kp, Ki, Kd, 10); // Инициализируем коэффициенты регулятора и dt
 
-int speedEasyLine = 50, speedHardLine = 35;
-int speed = speedEasyLine;
+int speedEasyLine = 70, speedStandartLine = 50, speedHardLine = 35; // Значения скорости на простом и сложном участке
+int speed = speedEasyLine; // Скорость
 
 void(* softResetFunc) (void) = 0; // Функция мягкого перезапуска
 
@@ -120,19 +123,25 @@ void loop() {
     float value = valueStr.toFloat();
     if (incoming == "pe") {
       Kp_easy = value;
-      regulator.Kp = Kp;
+      regulator.Kp = Kp_easy;
     } else if (incoming == "ph") {
       Kp_hard = value;
-      regulator.Kp = Kp;
+      regulator.Kp = Kp_hard;
     } else if (incoming == "i") {
       regulator.Ki = value;
       regulator.integral = 0;
-    } else if (incoming == "d") {
-      regulator.Kd = value;
+    } else if (incoming == "de") {
+      Kd_easy = value;
+      regulator.Kd = Kd_easy;
+    } else if (incoming == "dh") {
+      Kd_hard = value;
+      regulator.Kd = Kd_hard;
     } else if (incoming == "se") {
       speedEasyLine = value;
     } else if (incoming == "sh") {
       speedHardLine = value;
+    }  else if (incoming == "ss") {
+      speedStandartLine = value;
     }
     Serial.print(incoming);
     Serial.print(" = ");
@@ -174,15 +183,21 @@ void loop() {
     // Если линия замечена с края кадра
     if (lineL < LINE_HORISONTAL_POS_THERSHOLD_LEFT || lineR > LINE_HORISONTAL_POS_THERSHOLD_RIGHT) {
       Kp = Kp_hard;
-      if (regulator.Kp != Kp) regulator.Kp = Kp;
+      Kd = Kd_hard;
       speed = speedHardLine;
-    } else {
+    } else if (lineX > LINE_X_IN_CENTER_LEFT_BOARD || LINE_X_IN_CENTER_RIGHT_BOARD < lineX) { // Если линия близка к центру
       Kp = Kp_easy;
-      if (regulator.Kp != Kp) regulator.Kp = Kp;
+      Kd = Kd_easy;
       speed = speedEasyLine;
+      regulator.integral = 0; // Обнуляем интегральную составляющую
+    } else { // Простая линия
+      Kp = Kp_easy;
+      Kd = Kd_easy;
+      speed = speedStandartLine;
     }
-    // Обнуляем интегральную составляющую регулятора, если линия близка к центру
-    if (lineX > LINE_X_IN_CENTER_LEFT_BOARD || LINE_X_IN_CENTER_RIGHT_BOARD < lineX) regulator.integral = 0;
+    if (regulator.Kp != Kp) regulator.Kp = Kp; // Установка значений Kp, если они были изменены
+    if (regulator.Ki != Ki) regulator.Ki = Ki; // Установка значений Ki, если они были изменены
+    if (regulator.Kd != Kd) regulator.Kd = Kd; // Установка значений Kd, если они были изменены
     regulator.setDt(loopTime); // Установка dt для регулятора
     float u = regulator.getResult(); // Управляющее воздействие с регулятора
     MotorsControl(u, speed);
