@@ -26,7 +26,7 @@
 #include "GyverButton.h"
 #include "TrackingCamI2C.h"
 
-#define DEBUG false // Дебаг true/false
+#define DEBUG_LEVEL 1 // Уровень дебага
 
 #define RESET_BTN_PIN 7 // Пин кнопки для мягкого перезапуска
 #define LED_PIN 11 // Пин светодиода
@@ -50,6 +50,8 @@
 
 #define LINE_Y_BOTTOM_START 230 // Значение от которого стоит отмечать, что мы нашли действительно линию
 
+#define MAX_CAM_WAIT_IN_START 5000 // Максимальное время ожидания подключения камеры, это защитный параметр
+
 Servo lServoMot, rServoMot; // Инициализация объектов моторов
 GTimer myTimer(MS, 10); // Инициализация объекта таймера
 GButton btn(RESET_BTN_PIN); // Инициализация кнопки
@@ -58,7 +60,7 @@ TrackingCamI2C trackingCam; // Инициализация объекта кам�
 unsigned long currTime, prevTime, loopTime; // Время
 
 float Kp_easy = 0.3, Kp_hard = 2.7; // Пропрорциональные коэффиценты, при прямых участках и поворотах
-float Kd_easy = 0.5, Kd_hard = 0; // Дифференциальные коэффициенты, при прямых участках и поворотах
+float Kd_easy = 0.7, Kd_hard = 0; // Дифференциальные коэффициенты, при прямых участках и поворотах
 float Kp = Kp_easy, Ki = 0.01, Kd = Kd_easy; // Начальные коэффиценты регулятора
 
 GyverPID regulator(Kp, Ki, Kd, 10); // Инициализируем коэффициенты регулятора и dt
@@ -91,7 +93,7 @@ void setup() {
   while (true) { // Ждём пока камера начнёт работать
     uint8_t nBlobs = trackingCam.readBlobs(); // Считать найденные объекты
     Serial.println(nBlobs); // Выводим количество найденных blobs
-    if (nBlobs == 1) break; // Если она нашла линию, то выбрасываем из цикла
+    if (nBlobs == 1 || millis() >= MAX_CAM_WAIT_IN_START) break; // Если она нашла 1 линию, то выбрасываем из цикла или выбрасываем в том случае, если прошлом максимальное время ожидания
     delay(500); // Задержка между проверками
   }
   digitalWrite(LED_PIN, HIGH); // Включаем светодио
@@ -143,9 +145,11 @@ void loop() {
     }  else if (incoming == "ss") {
       speedStandartLine = value;
     }
-    Serial.print(incoming);
-    Serial.print(" = ");
-    Serial.println(value);
+    if (DEBUG_LEVEL => 1) { // Печать информации о фигуре
+      Serial.print(incoming);
+      Serial.print(" = ");
+      Serial.println(value);
+    }
   }
   if (btn.isClick()) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
   if (myTimer.isReady()) { // Раз в 10 мсек выполнять
@@ -168,8 +172,7 @@ void loop() {
           lineL = left; lineR = right;
         }
       }
-      if (DEBUG) {
-        // Печать информации о фигуре
+      if (DEBUG_LEVEL => 2) { // Печать информации о фигуре
         Serial.print(cx, DEC); Serial.print(" "); Serial.print(cy, DEC); Serial.print(" ");
         Serial.print(bottom, DEC); Serial.print(" ");
         Serial.print(left, DEC); Serial.print(" "); Serial.print(right, DEC); Serial.print(" ");
@@ -201,8 +204,8 @@ void loop() {
     regulator.setDt(loopTime); // Установка dt для регулятора
     float u = regulator.getResult(); // Управляющее воздействие с регулятора
     MotorsControl(u, speed);
-    //MotorSpeed(lServoMot, 5, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 11, SERVO_MOT_R_DIR_MODE);
-    if (DEBUG) {
+    //MotorSpeed(lServoMot, 5, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 11, SERVO_MOT_R_DIR_MODE); // Для тестирования моторов по отдельности
+    if (DEBUG_LEVEL >= 2) {
       Serial.print("Kp: "); Serial.println(Kp);
       Serial.print("Line: "); // Пеяать информации о выбранной фигуре
       Serial.print(lineX, DEC); Serial.print(" ");
@@ -210,8 +213,10 @@ void loop() {
       Serial.print(lineL, DEC); Serial.print(" "); Serial.print(lineR, DEC); Serial.print(" ");
       Serial.print(lineArea, DEC); Serial.println();
     }
-    Serial.print("error: "); Serial.println(error);
-    Serial.print("u: "); Serial.println(u);
+    if (DEBUG_LEVEL >= 1) {
+      Serial.print("error: "); Serial.println(error);
+      Serial.print("u: "); Serial.println(u);
+    }
   }
 }
 
