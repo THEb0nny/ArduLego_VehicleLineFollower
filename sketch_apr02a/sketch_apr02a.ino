@@ -34,11 +34,15 @@
 #define SERVO_MOT_L_PIN 2 // Пин левого серво мотора
 #define SERVO_MOT_R_PIN 4 // Пин правого серво мотора
 
+#define CENTER_LEFT_LINE_SENSOR_PIN A0 // Пин центрального левого датчика линии
+#define CENTER_RIGHT_LINE_SENSOR_PIN A1 // Пин центрального правого датчика линии
+#define SIDE_LEFT_LINE_SENSOR_PIN A2 // Пин крайнего левого датчика
+#define SIDE_RIGHT_LINE_SENSOR_PIN A3 // Пин крайнего левого датчика
+
 #define SERVO_MOT_L_DIR_MODE 1 // Режим вращения левого мотора, где нормально 1, реверс -1
 #define SERVO_MOT_R_DIR_MODE -1 // Режим вращения правого мотора
 
 #define LINE_FOLLOW_SET_POINT 160 // Значение уставки, к которому линия должна стремиться
-#define MIN_SPEED_FOR_SERVO_MOT 10 // Минимальное значение для старта серво мотора
 
 #define LINE_HORISONTAL_POS_BORDER 20
 #define LINE_HORISONTAL_POS_THERSHOLD_LEFT LINE_HORISONTAL_POS_BORDER // Левая граница определения сложного поворота
@@ -231,12 +235,17 @@ void MotorsControl(int dir, int speed) {
 }
 
 // Управление серво мотором
-void MotorSpeed(Servo servoMot, int speed, int rotateMode) {
+void MotorSpeed(Servo servoMot, int inputSpeed, int rotateMode) {
   // Servo, 0->FW, 90->stop, 180->BW
-  speed = constrain(speed, -90, 90) * rotateMode;
-  //Serial.print("servoMotSpeed "); Serial.print(speed); // Вывод скорости, которую передали параметром в функцию
-  if (speed >= 0) speed = map(speed, 0, 90, 90, 180);
-  else speed = map(speed, 0, -90, 90, 0);
-  servoMot.write(speed);
-  //Serial.print(" convertedMotSpeed "); Serial.println(speed); // Вывод обработанной скорости
+  inputSpeed = constrain(inputSpeed, -90, 90) * rotateMode;
+  Serial.print("inputSpeed "); Serial.print(inputSpeed); Serial.print(", "); 
+  int speed = map(inputSpeed, -90, 90, 0, 180);
+  Serial.print("speed "); Serial.println(speed);
+  if (inputSpeed >= 0) speed = map(speed, 90, 180, GEEKSERVO_CW_LEFT_BOARD_PULSE_WIDTH, GEEKSERVO_CW_RIGHT_BOARD_PULSE_WIDTH);
+  else speed = map(speed, 90, 0, GEEKSERVO_CCW_LEFT_BOARD_PULSE_WIDTH, GEEKSERVO_CCW_RIGHT_BOARD_PULSE_WIDTH);
+  servoMot.writeMicroseconds(speed);
+  if (DEBUG_LEVEL >= 2) {
+    Serial.print("inputServoMotSpeed "); Serial.print(inputSpeed); Serial.print(" ");
+    Serial.print("servoMotSpeed "); Serial.println(speed);
+  }
 }
