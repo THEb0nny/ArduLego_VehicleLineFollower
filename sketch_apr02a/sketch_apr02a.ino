@@ -34,10 +34,16 @@
 #define SERVO_MOT_L_PIN 2 // Пин левого серво мотора
 #define SERVO_MOT_R_PIN 4 // Пин правого серво мотора
 
-#define CENTER_LEFT_LINE_SENSOR_PIN A0 // Пин центрального левого датчика линии
-#define CENTER_RIGHT_LINE_SENSOR_PIN A1 // Пин центрального правого датчика линии
-#define SIDE_LEFT_LINE_SENSOR_PIN A2 // Пин крайнего левого датчика
-#define SIDE_RIGHT_LINE_SENSOR_PIN A3 // Пин крайнего левого датчика
+/*
+#define GEEKSERVO_CW_LEFT_BOARD_PULSE_WIDTH 1607 // Левая граница ширины импульса вравщения по часовой geekservo
+#define GEEKSERVO_CW_RIGHT_BOARD_PULSE_WIDTH 2500 // Правая граница ширины импульса вращения по часовой geekservo
+#define GEEKSERVO_CCW_LEFT_BOARD_PULSE_WIDTH 1393 // Минимальное значение ширины импульса вравщения против часовой geekservo
+#define GEEKSERVO_CCW_RIGHT_BOARD_PULSE_WIDTH 500 // Максимальное значение ширины импульса вращения против часовой geekservo
+*/
+#define GEEKSERVO_CW_LEFT_BOARD_PULSE_WIDTH 1500 // Левая граница ширины импульса вравщения по часовой geekservo
+#define GEEKSERVO_CW_RIGHT_BOARD_PULSE_WIDTH 500 // Правая граница ширины импульса вращения по часовой geekservo
+#define GEEKSERVO_CCW_LEFT_BOARD_PULSE_WIDTH 1500 // Минимальное значение ширины импульса вравщения против часовой geekservo
+#define GEEKSERVO_CCW_RIGHT_BOARD_PULSE_WIDTH 2500 // Максимальное значение ширины импульса вращения против часовой geekservo
 
 #define SERVO_MOT_L_DIR_MODE 1 // Режим вращения левого мотора, где нормально 1, реверс -1
 #define SERVO_MOT_R_DIR_MODE -1 // Режим вращения правого мотора
@@ -87,9 +93,8 @@ void setup() {
   btn.setDirection(NORM_OPEN); // NORM_OPEN - нормально-разомкнутая кнопка, NORM_CLOSE - нормально-замкнутая кнопка
   btn.setTickMode(AUTO); // MANUAL - нужно вызывать функцию tick() вручную, AUTO - tick() входит во все остальные функции и опрашивается сама!
   // Моторы
-  lServoMot.attach(SERVO_MOT_L_PIN, 500, 2500); rServoMot.attach(SERVO_MOT_R_PIN, 500, 2500); // Подключение моторов
+  lServoMot.attach(SERVO_MOT_L_PIN); rServoMot.attach(SERVO_MOT_R_PIN); // Подключение моторов
   MotorSpeed(lServoMot, 0, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 0, SERVO_MOT_R_DIR_MODE); // При старте моторы выключаем
-  //lServoMot.write(90); rServoMot.write(90);
   // Регулятор
   regulator.setDirection(NORMAL); // Направление регулирования (NORMAL/REVERSE)
   regulator.setLimits(-90, 90); // Пределы регулятора
@@ -149,7 +154,7 @@ void loop() {
     }  else if (incoming == "ss") {
       speedStandartLine = value;
     }
-    if (DEBUG_LEVEL => 1) { // Печать информации о фигуре
+    if (DEBUG_LEVEL >= 1) { // Печать информации о фигуре
       Serial.print(incoming);
       Serial.print(" = ");
       Serial.println(value);
@@ -176,7 +181,7 @@ void loop() {
           lineL = left; lineR = right;
         }
       }
-      if (DEBUG_LEVEL => 2) { // Печать информации о фигуре
+      if (DEBUG_LEVEL >= 2) { // Печать информации о фигуре
         Serial.print(cx, DEC); Serial.print(" "); Serial.print(cy, DEC); Serial.print(" ");
         Serial.print(bottom, DEC); Serial.print(" ");
         Serial.print(left, DEC); Serial.print(" "); Serial.print(right, DEC); Serial.print(" ");
@@ -208,7 +213,7 @@ void loop() {
     regulator.setDt(loopTime); // Установка dt для регулятора
     float u = regulator.getResult(); // Управляющее воздействие с регулятора
     MotorsControl(u, speed);
-    //MotorSpeed(lServoMot, 5, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 11, SERVO_MOT_R_DIR_MODE); // Для тестирования моторов по отдельности
+    //MotorSpeed(lServoMot, 1, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 0, SERVO_MOT_R_DIR_MODE); // Для тестирования моторов по отдельности
     if (DEBUG_LEVEL >= 2) {
       Serial.print("Kp: "); Serial.println(Kp);
       Serial.print("Line: "); // Пеяать информации о выбранной фигуре
