@@ -34,25 +34,20 @@
 #define SERVO_MOT_L_PIN 2 // Пин левого серво мотора
 #define SERVO_MOT_R_PIN 4 // Пин правого серво мотора
 
-/*
-#define GEEKSERVO_CW_LEFT_BOARD_PULSE_WIDTH 1607 // Левая граница ширины импульса вравщения по часовой geekservo
+#define GEEKSERVO_STEPPING_PULSE 1500 // Значение импулста для остановки мотора, нулевой скорости geekservo
+#define GEEKSERVO_CW_LEFT_BOARD_PULSE_WIDTH 1595 // Левая граница ширины импульса вравщения по часовой geekservo
 #define GEEKSERVO_CW_RIGHT_BOARD_PULSE_WIDTH 2500 // Правая граница ширины импульса вращения по часовой geekservo
-#define GEEKSERVO_CCW_LEFT_BOARD_PULSE_WIDTH 1393 // Минимальное значение ширины импульса вравщения против часовой geekservo
-#define GEEKSERVO_CCW_RIGHT_BOARD_PULSE_WIDTH 500 // Максимальное значение ширины импульса вращения против часовой geekservo
-*/
-#define GEEKSERVO_CW_LEFT_BOARD_PULSE_WIDTH 1500 // Левая граница ширины импульса вравщения по часовой geekservo
-#define GEEKSERVO_CW_RIGHT_BOARD_PULSE_WIDTH 500 // Правая граница ширины импульса вращения по часовой geekservo
-#define GEEKSERVO_CCW_LEFT_BOARD_PULSE_WIDTH 1500 // Минимальное значение ширины импульса вравщения против часовой geekservo
-#define GEEKSERVO_CCW_RIGHT_BOARD_PULSE_WIDTH 2500 // Максимальное значение ширины импульса вращения против часовой geekservo
+#define GEEKSERVO_CCW_LEFT_BOARD_PULSE_WIDTH 500 // Минимальное значение ширины импульса вравщения против часовой geekservo
+#define GEEKSERVO_CCW_RIGHT_BOARD_PULSE_WIDTH 1365 // Максимальное значение ширины импульса вращения против часовой geekservo
 
 #define SERVO_MOT_L_DIR_MODE 1 // Режим вращения левого мотора, где нормально 1, реверс -1
 #define SERVO_MOT_R_DIR_MODE -1 // Режим вращения правого мотора
 
-#define LINE_FOLLOW_SET_POINT 160 // Значение уставки, к которому линия должна стремиться
+#define LINE_FOLLOW_SET_POINT 160 // Значение уставки, к которому линия должна стремиться - это центр кадра
 
-#define LINE_HORISONTAL_POS_BORDER 20
-#define LINE_HORISONTAL_POS_THERSHOLD_LEFT LINE_HORISONTAL_POS_BORDER // Левая граница определения сложного поворота
-#define LINE_HORISONTAL_POS_THERSHOLD_RIGHT 320 - LINE_HORISONTAL_POS_BORDER // Правая граница определения сложного поворота
+#define LINE_HORISONTAL_POS_OFFSET_BORDER 20 // Значение отспупа слева/справ от края
+#define LINE_HORISONTAL_POS_THERSHOLD_LEFT LINE_HORISONTAL_POS_OFFSET_BORDER // Левая граница определения сложного поворота
+#define LINE_HORISONTAL_POS_THERSHOLD_RIGHT 320 - LINE_HORISONTAL_POS_OFFSET_BORDER // Правая граница определения сложного поворота
 
 #define LINE_X_IN_CENTER_BORDER_VAL 15 // Значение отклонения прямого участка 
 #define LINE_X_IN_CENTER_LEFT_BOARD LINE_FOLLOW_SET_POINT - LINE_X_IN_CENTER_BORDER_VAL // Определние линии в центре, левая граница
@@ -151,7 +146,7 @@ void loop() {
       speedEasyLine = value;
     } else if (incoming == "sh") {
       speedHardLine = value;
-    }  else if (incoming == "ss") {
+    } else if (incoming == "ss") {
       speedStandartLine = value;
     }
     if (DEBUG_LEVEL >= 1) { // Печать информации о фигуре
@@ -213,7 +208,7 @@ void loop() {
     regulator.setDt(loopTime); // Установка dt для регулятора
     float u = regulator.getResult(); // Управляющее воздействие с регулятора
     MotorsControl(u, speed);
-    //MotorSpeed(lServoMot, 1, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 0, SERVO_MOT_R_DIR_MODE); // Для тестирования моторов по отдельности
+    //MotorSpeed(lServoMot, -90, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, -90, SERVO_MOT_R_DIR_MODE); // Для тестирования моторов по отдельности
     if (DEBUG_LEVEL >= 2) {
       Serial.print("Kp: "); Serial.println(Kp);
       Serial.print("Line: "); // Пеяать информации о выбранной фигуре
@@ -235,7 +230,9 @@ void MotorsControl(int dir, int speed) {
   float z = (float) speed / max(abs(lServoMotSpeed), abs(rServoMotSpeed)); // Вычисляем отношение желаемой мощности к наибольшей фактической
   lServoMotSpeed *= z, rServoMotSpeed *= z;
   lServoMotSpeed = constrain(lServoMotSpeed, -90, 90), rServoMotSpeed = constrain(rServoMotSpeed, -90, 90);
-  //Serial.print(lServoMotSpeed); Serial.print(", "); Serial.println(rServoMotSpeed);
+  if (DEBUG_LEVEL >= 2) {
+    Serial.print(lServoMotSpeed); Serial.print(", "); Serial.println(rServoMotSpeed);
+  }
   MotorSpeed(lServoMot, lServoMotSpeed, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, rServoMotSpeed, SERVO_MOT_R_DIR_MODE);
 }
 
@@ -246,8 +243,9 @@ void MotorSpeed(Servo servoMot, int inputSpeed, int rotateMode) {
   Serial.print("inputSpeed "); Serial.print(inputSpeed); Serial.print(", "); 
   int speed = map(inputSpeed, -90, 90, 0, 180);
   Serial.print("speed "); Serial.println(speed);
-  if (inputSpeed >= 0) speed = map(speed, 90, 180, GEEKSERVO_CW_LEFT_BOARD_PULSE_WIDTH, GEEKSERVO_CW_RIGHT_BOARD_PULSE_WIDTH);
-  else speed = map(speed, 90, 0, GEEKSERVO_CCW_LEFT_BOARD_PULSE_WIDTH, GEEKSERVO_CCW_RIGHT_BOARD_PULSE_WIDTH);
+  if (inputSpeed > 0) speed = map(speed, 90, 180, GEEKSERVO_CW_LEFT_BOARD_PULSE_WIDTH, GEEKSERVO_CW_RIGHT_BOARD_PULSE_WIDTH);
+  else if (inputSpeed < 0) speed = map(speed, 0, 90, GEEKSERVO_CCW_LEFT_BOARD_PULSE_WIDTH, GEEKSERVO_CCW_RIGHT_BOARD_PULSE_WIDTH);
+  else speed = GEEKSERVO_STEPPING_PULSE;
   servoMot.writeMicroseconds(speed);
   if (DEBUG_LEVEL >= 2) {
     Serial.print("inputServoMotSpeed "); Serial.print(inputSpeed); Serial.print(" ");
