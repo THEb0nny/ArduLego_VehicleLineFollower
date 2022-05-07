@@ -118,7 +118,7 @@ void loop() {
     String command = Serial.readStringUntil('\n');
     command.trim(); // Чистим символы
     command.replace(" ", ""); // Убрать возможные пробелы между символами
-    byte strIndex = command.length(); // Переменая для хронения индекса вхождения цифры в входной строке
+    byte strIndex = command.length(); // Переменая для хронения индекса вхождения цифры в входной строке, изначально равна размеру строки
     // Поиск первого вхождения цифры от 0 по 9 в подстроку
     for (byte i = 0; i < 10; i++) {
       byte index = command.indexOf(String(i));
