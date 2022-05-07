@@ -115,41 +115,41 @@ void loop() {
     // Встроенная функция readStringUntil будет читать все данные, пришедшие в UART до специального символа — '\n' (перенос строки).
     // Он появляется в паре с '\r' (возврат каретки) при передаче данных функцией Serial.println().
     // Эти символы удобно передавать для разделения команд, но не очень удобно обрабатывать. Удаляем их функцией trim().
-    String command = Serial.readStringUntil('\n');
-    command.trim(); // Чистим символы
-    command.replace(" ", ""); // Убрать возможные пробелы между символами
-    byte strIndex = command.length(); // Переменая для хронения индекса вхождения цифры в входной строке, изначально равна размеру строки
+    String inputStr = Serial.readStringUntil('\n');
+    inputStr.trim(); // Чистим символы
+    inputStr.replace(" ", ""); // Убрать возможные пробелы между символами
+    byte strIndex = inputStr.length(); // Переменая для хронения индекса вхождения цифры в входной строке, изначально равна размеру строки
     // Поиск первого вхождения цифры от 0 по 9 в подстроку
     for (byte i = 0; i < 10; i++) {
-      byte index = command.indexOf(String(i));
+      byte index = inputStr.indexOf(String(i));
       if (index < strIndex && index != 255) strIndex = index;
     }
-    String incoming = command.substring(0, strIndex);
-    float value = command.substring(strIndex, command.length()).toFloat();
-    if (incoming == "pe") {
+    String key = inputStr.substring(0, strIndex);
+    float value = inputStr.substring(strIndex, inputStr.length()).toFloat();
+    if (key == "pe") {
       Kp_easy = value;
       regulator.Kp = Kp_easy;
-    } else if (incoming == "ph") {
+    } else if (key == "ph") {
       Kp_hard = value;
       regulator.Kp = Kp_hard;
-    } else if (incoming == "i") {
+    } else if (key == "i") {
       regulator.Ki = value;
       regulator.integral = 0;
-    } else if (incoming == "de") {
+    } else if (key == "de") {
       Kd_easy = value;
       regulator.Kd = Kd_easy;
-    } else if (incoming == "dh") {
+    } else if (key == "dh") {
       Kd_hard = value;
       regulator.Kd = Kd_hard;
-    } else if (incoming == "se") {
+    } else if (key == "se") {
       speedEasyLine = value;
-    } else if (incoming == "sh") {
+    } else if (key == "sh") {
       speedHardLine = value;
-    } else if (incoming == "ss") {
+    } else if (key == "ss") {
       speedStandartLine = value;
     }
     if (DEBUG_LEVEL >= 1) { // Печать информации о фигуре
-      Serial.print(incoming);
+      Serial.print(key);
       Serial.print(" = ");
       Serial.println(value);
     }
