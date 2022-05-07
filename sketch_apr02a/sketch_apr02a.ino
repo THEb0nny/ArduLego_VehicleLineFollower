@@ -125,8 +125,7 @@ void loop() {
       if (index < strIndex && index != 255) strIndex = index;
     }
     String incoming = command.substring(0, strIndex);
-    String valueStr = command.substring(strIndex, command.length());
-    float value = valueStr.toFloat();
+    float value = command.substring(strIndex, command.length()).toFloat();
     if (incoming == "pe") {
       Kp_easy = value;
       regulator.Kp = Kp_easy;
