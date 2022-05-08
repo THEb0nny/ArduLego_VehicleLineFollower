@@ -111,49 +111,7 @@ void loop() {
   currTime = millis();
   loopTime = currTime - prevTime;
   prevTime = currTime;
-  if (Serial.available() > 2) {
-    // Встроенная функция readStringUntil будет читать все данные, пришедшие в UART до специального символа — '\n' (перенос строки).
-    // Он появляется в паре с '\r' (возврат каретки) при передаче данных функцией Serial.println().
-    // Эти символы удобно передавать для разделения команд, но не очень удобно обрабатывать. Удаляем их функцией trim().
-    String inputStr = Serial.readStringUntil('\n');
-    inputStr.trim(); // Чистим символы
-    inputStr.replace(" ", ""); // Убрать возможные пробелы между символами
-    byte strIndex = inputStr.length(); // Переменая для хронения индекса вхождения цифры в входной строке, изначально равна размеру строки
-    // Поиск первого вхождения цифры от 0 по 9 в подстроку
-    for (byte i = 0; i < 10; i++) {
-      byte index = inputStr.indexOf(String(i));
-      if (index < strIndex && index != 255) strIndex = index;
-    }
-    String key = inputStr.substring(0, strIndex);
-    float value = inputStr.substring(strIndex, inputStr.length()).toFloat();
-    if (key == "pe") {
-      Kp_easy = value;
-      regulator.Kp = Kp_easy;
-    } else if (key == "ph") {
-      Kp_hard = value;
-      regulator.Kp = Kp_hard;
-    } else if (key == "i") {
-      regulator.Ki = value;
-      regulator.integral = 0;
-    } else if (key == "de") {
-      Kd_easy = value;
-      regulator.Kd = Kd_easy;
-    } else if (key == "dh") {
-      Kd_hard = value;
-      regulator.Kd = Kd_hard;
-    } else if (key == "se") {
-      speedEasyLine = value;
-    } else if (key == "sh") {
-      speedHardLine = value;
-    } else if (key == "ss") {
-      speedStandartLine = value;
-    }
-    if (DEBUG_LEVEL >= 1) { // Печать информации о фигуре
-      Serial.print(key);
-      Serial.print(" = ");
-      Serial.println(value);
-    }
-  }
+  ParseSerialInputValues(); // Парсинг значений из Serial
   if (btn.isClick()) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
   if (myTimer.isReady()) { // Раз в 10 мсек выполнять
     int lineX = 0, lineY = 0, lineB = 0, lineL = 0, lineR = 0;
@@ -249,5 +207,49 @@ void MotorSpeed(Servo servoMot, int inputSpeed, int rotateMode) {
   if (DEBUG_LEVEL >= 2) {
     Serial.print("inputServoMotSpeed "); Serial.print(inputSpeed); Serial.print(" ");
     Serial.print("servoMotSpeed "); Serial.println(speed);
+  }
+}
+
+// Парсинг значений из Serial
+void ParseSerialInputValues() {
+  if (Serial.available() > 2) {
+    // Встроенная функция readStringUntil будет читать все данные, пришедшие в UART до специального символа — '\n' (перенос строки).
+    // Он появляется в паре с '\r' (возврат каретки) при передаче данных функцией Serial.println().
+    // Эти символы удобно передавать для разделения команд, но не очень удобно обрабатывать. Удаляем их функцией trim().
+    String inputStr = Serial.readStringUntil('\n');
+    inputStr.trim(); // Чистим символы
+    inputStr.replace(" ", ""); // Убрать возможные пробелы между символами
+    byte strIndex = inputStr.length(); // Переменая для хронения индекса вхождения цифры в входной строке, изначально равна размеру строки
+    for (byte i = 0; i < 10; i++) { // Поиск первого вхождения цифры от 0 по 9 в подстроку
+      byte index = inputStr.indexOf(String(i)); // Узнаём индекс, где нашли цифру параметра цикла
+      if (index < strIndex && index != 255) strIndex = index; // Если индекс цифры меньше strIndex, то обновляем strIndex 
+    }
+    String key = inputStr.substring(0, strIndex); // Записываем ключ с начала строки до первой цицры
+    float value = inputStr.substring(strIndex, inputStr.length()).toFloat(); // Записываем значение с начала цифры до конца строки
+    if (key == "pe") {
+      Kp_easy = value;
+      regulator.Kp = Kp_easy;
+    } else if (key == "ph") {
+      Kp_hard = value;
+      regulator.Kp = Kp_hard;
+    } else if (key == "i") {
+      regulator.Ki = value;
+      regulator.integral = 0;
+    } else if (key == "de") {
+      Kd_easy = value;
+      regulator.Kd = Kd_easy;
+    } else if (key == "dh") {
+      Kd_hard = value;
+      regulator.Kd = Kd_hard;
+    } else if (key == "se") {
+      speedEasyLine = value;
+    } else if (key == "sh") {
+      speedHardLine = value;
+    } else if (key == "ss") {
+      speedStandartLine = value;
+    }
+    if (DEBUG_LEVEL >= 1) { // Печать информации о ключе и значении
+      Serial.print(key); Serial.print(" = "); Serial.println(value);
+    }
   }
 }
