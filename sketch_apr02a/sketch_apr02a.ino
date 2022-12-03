@@ -56,9 +56,9 @@
 #define LINE_HORISONTAL_POS_THERSHOLD_LEFT LINE_HORISONTAL_POS_OFFSET_BORDER // Левая граница определения сложного поворота
 #define LINE_HORISONTAL_POS_THERSHOLD_RIGHT 320 - LINE_HORISONTAL_POS_OFFSET_BORDER // Правая граница определения сложного поворота
 
-#define LINE_X_IN_CENTER_BORDER_VAL 15 // Значение отклонения прямого участка 
-#define LINE_X_IN_CENTER_LEFT_BOARD LINE_FOLLOW_SET_POINT - LINE_X_IN_CENTER_BORDER_VAL // Определние линии в центре, левая граница
-#define LINE_X_IN_CENTER_RIGHT_BOARD LINE_FOLLOW_SET_POINT + LINE_X_IN_CENTER_BORDER_VAL // Определние линии в центре, правая граница
+#define LINE_X_IN_CENTER_BORDER_OFFSET_VAL 15 // Значение отклонения прямого участка 
+#define LINE_X_IN_CENTER_LEFT_BOARD LINE_FOLLOW_SET_POINT - LINE_X_IN_CENTER_BORDER_OFFSET_VAL // Определние линии в центре, левая граница
+#define LINE_X_IN_CENTER_RIGHT_BOARD LINE_FOLLOW_SET_POINT + LINE_X_IN_CENTER_BORDER_OFFSET_VAL // Определние линии в центре, правая граница
 
 #define LINE_Y_BOTTOM_START 230 // Значение от которого стоит отмечать, что мы нашли действительно линию
 
@@ -68,7 +68,7 @@ unsigned long currTime, prevTime, loopTime, dt; // Время
 
 float Kp_easy = 0.3, Kp_hard = 2.7; // Пропрорциональные коэффиценты, при прямых участках и поворотах
 float Ki_easy = 0, Ki_hard = 0.01; // Интегральные коэффициенты, при прямых участках и поворотах
-float Kd_easy = 0.7, Kd_hard = 0; // Дифференциальные коэффициенты, при прямых участках и поворотах
+float Kd_easy = 0.5, Kd_hard = 2; // Дифференциальные коэффициенты, при прямых участках и поворотах
 float Kp = Kp_easy, Ki = Ki_easy, Kd = Kd_easy; // Начальные коэффиценты регулятора
 
 Servo lServoMot, rServoMot; // Инициализация объектов моторов
@@ -96,7 +96,7 @@ void setup() {
   trackingCam.init(51, 400000); // cam_id - 1..127, default 51, speed - 100000/400000, cam enables auto detection of master clock
   while (true) { // Ждём пока камера начнёт работать
     uint8_t nBlobs = trackingCam.readBlobs(); // Считать найденные объекты
-    Serial.println(nBlobs); // Выводим количество найденных blobs
+    if (DEBUG_LEVEL >= 2) Serial.println(nBlobs); // Выводим количество найденных blobs
     if (nBlobs == 1 || millis() >= MAX_CAM_WAIT_IN_START) break; // Если она нашла 1 блоб, то выбрасываем из цикла или выбрасываем в том случае, если прошлом максимальное время ожидания
     delay(500); // Задержка между проверками
   }
@@ -110,12 +110,14 @@ void setup() {
       break;
     }
   }
+  // Записываем время перед стартом loop
+  currTime = millis();
+  prevTime = currTime;
 }
 
 void loop() {
   CheckBtnClick(); // Вызываем функцию опроса кнопки
   ParseSerialInputValues(); // Парсинг значений из Serial
-  if (btn.isClick()) softResetFunc(); // Если клавиша нажата, то сделаем мягкую перезагрузку
   if (myTimer.isReady()) { // Раз в 10 мсек выполнять
     currTime = millis();
     loopTime = currTime - prevTime;
@@ -147,24 +149,23 @@ void loop() {
         Serial.print(area, DEC); Serial.println();
       }
     }
-    int lineArea = maxArea;
-    int error = (lineX == 0 ? 0 : lineX - LINE_FOLLOW_SET_POINT); // Нахождение ошибки, если линия не найдена, то значение направления 0
-    regulator.setpoint = error; // Передаём ошибку регулятору
+    int lineArea = maxArea; // Площадь фигуры с линией
     CheckBtnClick(); // Повторно вызываем функцию опроса кнопки
-    // Если линия замечена с края кадра
-    if (lineL < LINE_HORISONTAL_POS_THERSHOLD_LEFT || lineR > LINE_HORISONTAL_POS_THERSHOLD_RIGHT) {
+    int error = (nBlobs == 0 ? 0 : lineX - LINE_FOLLOW_SET_POINT); // Нахождение ошибки, если линия не найдена, то значение направления 0, ToDo сделать алгоритм возвращения на линию
+    regulator.setpoint = error; // Передаём ошибку регулятору
+    if (lineL < LINE_HORISONTAL_POS_THERSHOLD_LEFT || lineR > LINE_HORISONTAL_POS_THERSHOLD_RIGHT) { // Если линия замечена с края кадра
       Kp = Kp_hard;
       Kd = Kd_hard;
       speed = speedHardLine;
-    } else if (lineX > LINE_X_IN_CENTER_LEFT_BOARD || LINE_X_IN_CENTER_RIGHT_BOARD < lineX) { // Если линия близка к центру
-      Kp = Kp_easy;
-      Kd = Kd_easy;
-      speed = speedEasyLine;
-      regulator.integral = 0; // Обнуляем интегральную составляющую
-    } else { // Простая линия
+    } else if (LINE_X_IN_CENTER_LEFT_BOARD <= lineX && lineX <= LINE_X_IN_CENTER_RIGHT_BOARD) { // Если линия близка к центру
       Kp = Kp_easy;
       Kd = Kd_easy;
       speed = speedStandartLine;
+    } else { // Простая линия
+      Kp = Kp_easy;
+      Kd = Kd_easy;
+      regulator.integral = 0; // Обнуляем интегральную составляющую
+      speed = speedEasyLine;
     }
     if (regulator.Kp != Kp) regulator.Kp = Kp; // Установка значений Kp, если они были изменены
     if (regulator.Ki != Ki) regulator.Ki = Ki; // Установка значений Ki, если они были изменены
