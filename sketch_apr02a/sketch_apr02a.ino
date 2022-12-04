@@ -50,28 +50,28 @@
 #define GSERVO_L_DIR_MODE false // Режим реверса вращения левого сервомотора
 #define GSERVO_R_DIR_MODE true // Режим реверса вращения правого сервомотора
 
-#define CAM_WIDTH 320 // Ширина кадра от камеры
+#define CAM_WIDTH 310 // Ширина кадра от камеры
 
 #define LINE_FOLLOW_SET_POINT CAM_WIDTH / 2 // Значение уставки, к которому линия должна стремиться - это центр кадра
 
-#define CAM_X_CENTER_BORDER_OFFSET 15 // Околоцентральная граница
+#define CAM_X_CENTER_BORDER_OFFSET 40 // Околоцентральная граница
 #define CAM_X_CENTER_L_TRESHOLD (CAM_WIDTH / 2) - CAM_X_CENTER_BORDER_OFFSET // Левое значение центральной границы
 #define CAM_X_CENTER_R_TRESHOLD (CAM_WIDTH / 2) + CAM_X_CENTER_BORDER_OFFSET // Правое значение центральной границы
 
-#define CAM_X_EXTREME_BORDER_OFFSET 20 // Значение крайних сегментов
+#define CAM_X_EXTREME_BORDER_OFFSET 30 // Значение крайних сегментов
 #define CAM_X_EXTREME_L_TRESHOLD CAM_X_EXTREME_BORDER_OFFSET // Левая граница крайнего сегмента
 #define CAM_X_EXTREME_R_TRESHOLD CAM_WIDTH - CAM_X_EXTREME_BORDER_OFFSET // Правая граница крайнего сегмента
 
 #define LINE_Y_BOTTOM_START 230 // Значение от которого стоит отмечать, что мы нашли действительно линию
 
-#define MAX_CAM_WAIT_AT_START 6000 // Максимальное время ожидания подключения камеры, это защитный параметр
+#define MAX_CAM_WAIT_AT_START 6500 // Максимальное время ожидания подключения камеры, это защитный параметр
 
 unsigned long currTime, prevTime, loopTime; // Время
 unsigned int delayLineFollowModeSwitch = 0; // Время задержки переключения режима движения по линии по зонам
 
-float Kp_easy = 0.3, Kp_norm = 0.3, Kp_hard = 2.7; // Пропрорциональные коэффиценты, при прямых участках и поворотах
+float Kp_easy = 0.3, Kp_norm = 0.3, Kp_hard = 0.6; // Пропрорциональные коэффиценты, при прямых участках и поворотах
 float Ki_easy = 0, Ki_norm = 0, Ki_hard = 0.01; // Интегральные коэффициенты, при прямых участках и поворотах
-float Kd_easy = 0.5, Kd_norm = 0.5, Kd_hard = 2; // Дифференциальные коэффициенты, при прямых участках и поворотах
+float Kd_easy = 1, Kd_norm = 1.5, Kd_hard = 2; // Дифференциальные коэффициенты, при прямых участках и поворотах
 float Kp = Kp_easy, Ki = Ki_easy, Kd = Kd_easy; // Начальные коэффиценты регулятора
 
 TrackingCamI2C trackingCam; // Инициализация объекта камеры
@@ -158,13 +158,14 @@ void loop() {
     int error = (nBlobs == 0 ? 0 : lineX - LINE_FOLLOW_SET_POINT); // Нахождение ошибки, если линия не найдена, то значение направления 0, ToDo сделать алгоритм возвращения на линию
     regulator.setpoint = error; // Передаём ошибку регулятору
     if (CAM_X_CENTER_L_TRESHOLD <= lineX && lineX <= CAM_X_CENTER_R_TRESHOLD) { // Центр фигуры линии X в центральной зоне кадра
-      if (lineFollowZone != 1) { // Если зона не 1 - центральная
-        delayLineFollowModeSwitch = 200;
+      //Serial.println("1");
+      if (lineFollowZone != 1 && !lineFollowModeSwitchTime.isEnabled()) { // Если зона не 1 - центральная
+        delayLineFollowModeSwitch = 300;
         lineFollowModeSwitchTime.setTimeout(delayLineFollowModeSwitch);
-        Serial.println("Set delayLineFollowModeSwitch: " + String(delayLineFollowModeSwitch));
+        //Serial.println("Set delayLineFollowModeSwitch: " + String(delayLineFollowModeSwitch));
       }
       if (lineFollowModeSwitchTime.isReady() && lineFollowZone != 1) {
-        Serial.println("Set lineFollowZone: " + String(lineFollowZone));
+        //Serial.println("Confirm set lineFollowZone: " + String(1));
         lineFollowZone = 1; // Установить новое значение зоны
         Kp = Kp_easy;
         Ki = Ki_easy;
@@ -173,36 +174,40 @@ void loop() {
         speed = speedEasyLine;
       }
     } else if (CAM_X_EXTREME_L_TRESHOLD <= lineL && lineR <= CAM_X_EXTREME_R_TRESHOLD) { // Крайние значения фигуры линии попадают зону до экстримальной зоны кадра
-      Kp = Kp_norm;
-      Ki = Ki_norm;
-      Kd = Kd_norm;
-      speed = speedNormalLine;
+      //Serial.println("2");
+      if (lineFollowZone != 2 && !lineFollowModeSwitchTime.isEnabled()) { // Если зона не 1 - центральная
+        delayLineFollowModeSwitch = 100;
+        lineFollowModeSwitchTime.setTimeout(delayLineFollowModeSwitch);
+        //Serial.println("Set delayLineFollowModeSwitch: " + String(delayLineFollowModeSwitch));
+      }
+      if (lineFollowModeSwitchTime.isReady() && lineFollowZone != 2) {
+        //Serial.println("Confirm set lineFollowZone: " + String(2));
+        lineFollowZone = 2; // Установить новое значение зоны
+        Kp = Kp_norm;
+        Ki = Ki_norm;
+        Kd = Kd_norm;
+        speed = speedNormalLine;
+      }
     } else { // Линия за крайней границой слева или справа
-      Kp = Kp_hard;
-      Ki = Ki_hard;
-      Kd = Kd_hard;
-      speed = speedHardLine;
+      //Serial.println("3");
+      if (lineFollowZone != 3 && !lineFollowModeSwitchTime.isEnabled()) { // Если зона не 1 - центральная
+        delayLineFollowModeSwitch = 50;
+        lineFollowModeSwitchTime.setTimeout(delayLineFollowModeSwitch);
+        //Serial.println("Set delayLineFollowModeSwitch: " + String(delayLineFollowModeSwitch));
+      }
+      if (lineFollowModeSwitchTime.isReady() && lineFollowZone != 3) {
+        //Serial.println("Confirm set lineFollowZone: " + String(3));
+        lineFollowZone = 3; // Установить новое значение зоны
+        Kp = Kp_hard;
+        Ki = Ki_hard;
+        Kd = Kd_hard;
+        speed = speedHardLine;
+      }
     }
-    /*
-    if (lineL < CAM_X_EXTREME_L_TRESHOLD || lineR > CAM_X_EXTREME_R_TRESHOLD) { // Если линия замечена с края кадра
-      Kp = Kp_hard;
-      Kd = Kd_hard;
-      speed = speedHardLine;
-    } else if (CAM_X_CENTER_L_TRESHOLD <= lineX && lineX <= CAM_X_CENTER_R_TRESHOLD) { // Если линия близка к центру
-      Kp = Kp_easy;
-      Kd = Kd_easy;
-      speed = speedStandartLine;
-    } else { // Простая линия
-      Kp = Kp_easy;
-      Kd = Kd_easy;
-      regulator.integral = 0; // Обнуляем интегральную составляющую
-      speed = speedEasyLine;
-    }
-    */
     if (regulator.Kp != Kp) regulator.Kp = Kp; // Установка значений Kp, если они были изменены
     if (regulator.Ki != Ki) regulator.Ki = Ki; // Установка значений Ki, если они были изменены
     if (regulator.Kd != Kd) regulator.Kd = Kd; // Установка значений Kd, если они были изменены
-    regulator.setDt(loopTime); // Установка dt для регулятора
+    regulator.setDt(loopTime != 0 ? loopTime : 1); // Установка dt для регулятора
     float u = regulator.getResult(); // Управляющее воздействие с регулятора
     if (DEBUG_LEVEL >= 0) {
       MotorsControl(u, speed); // Для запуска моторов
