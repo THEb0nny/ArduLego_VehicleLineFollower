@@ -54,13 +54,9 @@
 
 #define LINE_FOLLOW_SET_POINT CAM_WIDTH / 2 // Значение уставки, к которому линия должна стремиться - это центр кадра
 
-#define CAM_X_CENTER_BORDER_OFFSET 40 // Околоцентральная граница
+#define CAM_X_CENTER_BORDER_OFFSET 100 // Околоцентральная граница
 #define CAM_X_CENTER_L_TRESHOLD (CAM_WIDTH / 2) - CAM_X_CENTER_BORDER_OFFSET // Левое значение центральной границы
 #define CAM_X_CENTER_R_TRESHOLD (CAM_WIDTH / 2) + CAM_X_CENTER_BORDER_OFFSET // Правое значение центральной границы
-
-#define CAM_X_EXTREME_BORDER_OFFSET 30 // Значение крайних сегментов
-#define CAM_X_EXTREME_L_TRESHOLD CAM_X_EXTREME_BORDER_OFFSET // Левая граница крайнего сегмента
-#define CAM_X_EXTREME_R_TRESHOLD CAM_WIDTH - CAM_X_EXTREME_BORDER_OFFSET // Правая граница крайнего сегмента
 
 #define LINE_Y_BOTTOM_START 230 // Значение от которого стоит отмечать, что мы нашли действительно линию
 
@@ -69,9 +65,9 @@
 unsigned long currTime, prevTime, loopTime; // Время
 unsigned int delayLineFollowModeSwitch = 0; // Время задержки переключения режима движения по линии по зонам
 
-float Kp_easy = 0.3, Kp_norm = 0.3, Kp_hard = 0.6; // Пропрорциональные коэффиценты, при прямых участках и поворотах
-float Ki_easy = 0, Ki_norm = 0, Ki_hard = 0.01; // Интегральные коэффициенты, при прямых участках и поворотах
-float Kd_easy = 1, Kd_norm = 1.5, Kd_hard = 2; // Дифференциальные коэффициенты, при прямых участках и поворотах
+float Kp_easy = 0.3, Kp_hard = 0.6; // Пропрорциональные коэффиценты, при прямых участках и поворотах
+float Ki_easy = 0, Ki_hard = 0.01; // Интегральные коэффициенты, при прямых участках и поворотах
+float Kd_easy = 1, Kd_hard = 2; // Дифференциальные коэффициенты, при прямых участках и поворотах
 float Kp = Kp_easy, Ki = Ki_easy, Kd = Kd_easy; // Начальные коэффиценты регулятора
 
 TrackingCamI2C trackingCam; // Инициализация объекта камеры
@@ -80,7 +76,7 @@ EncButton<EB_TICK, RESET_BTN_PIN> btn; // Просто кнопка <KEY>
 GTimer myTimer(MS, 10), lineFollowModeSwitchTime(MS); // Инициализация объекта таймера
 GyverPID regulator(Kp, Ki, Kd, 10); // Инициализируем коэффициенты регулятора и dt
 
-int speedEasyLine = 70, speedNormalLine = 50, speedHardLine = 35; // Значения скорости на простом, нормальном и сложном участке
+int speedEasyLine = 70, speedHardLine = 35; // Значения скорости на простом, нормальном и сложном участке
 int speed = speedEasyLine; // Скорость
 byte lineFollowZone = 1;
 
@@ -98,7 +94,11 @@ void setup() {
   while (true) { // Ждём пока камера начнёт работать
     uint8_t nBlobs = trackingCam.readBlobs(); // Считать найденные объекты
     if (DEBUG_LEVEL >= 2) Serial.println(nBlobs); // Выводим количество найденных blobs
-    if (nBlobs == 1 || millis() >= MAX_CAM_WAIT_AT_START) break; // Если она нашла 1 блоб, то выбрасываем из цикла или выбрасываем в том случае, если прошлом максимальное время ожидания
+    for(int i = 0; i < nBlobs; i++) { // Печать информации о blobs
+      int area = trackingCam.blob[i].area;
+      int bottom = trackingCam.blob[i].bottom;
+      if (area >= 30 && bottom > LINE_Y_BOTTOM_START || millis() >= MAX_CAM_WAIT_AT_START) break; // Если нашли большое большую область и она начинается с низу кадра, то выбрасываем из цикла или выбрасываем в том случае, если прошлом максимальное время ожидания
+    }
     delay(500); // Задержка между проверками
   }
   digitalWrite(LED_PIN, HIGH); // Включаем светодиод
@@ -138,13 +138,11 @@ void loop() {
       int bottom = trackingCam.blob[i].bottom;
       int left = trackingCam.blob[i].left;
       int right = trackingCam.blob[i].right;
-      if (bottom > LINE_Y_BOTTOM_START) { // Если линия начинается с нижней части картинки камеры
-        if (maxArea < area) { // Если площадь текущей фигуры-линии больше других, то выбираем этот объект как линию
-          maxArea = area;
-          lineX = cx; lineY = cy;
-          lineB = bottom;
-          lineL = left; lineR = right;
-        }
+      if (bottom > LINE_Y_BOTTOM_START && maxArea < area) { // Если линия начинается с нижней части картинки камеры и если площадь текущей фигуры-линии больше других, то выбираем этот объект как линию
+        maxArea = area;
+        lineX = cx; lineY = cy;
+        lineB = bottom;
+        lineL = left; lineR = right;
       }
       if (DEBUG_LEVEL >= 2) { // Печать информации о фигуре
         Serial.print(cx, DEC); Serial.print(" "); Serial.print(cy, DEC); Serial.print(" ");
@@ -158,14 +156,14 @@ void loop() {
     int error = (nBlobs == 0 ? 0 : lineX - LINE_FOLLOW_SET_POINT); // Нахождение ошибки, если линия не найдена, то значение направления 0, ToDo сделать алгоритм возвращения на линию
     regulator.setpoint = error; // Передаём ошибку регулятору
     if (CAM_X_CENTER_L_TRESHOLD <= lineX && lineX <= CAM_X_CENTER_R_TRESHOLD) { // Центр фигуры линии X в центральной зоне кадра
-      //Serial.println("1");
+      if (DEBUG_LEVEL >= 2) Serial.println("Got into the zone 1");
       if (lineFollowZone != 1 && !lineFollowModeSwitchTime.isEnabled()) { // Если зона не 1 - центральная
         delayLineFollowModeSwitch = 300;
         lineFollowModeSwitchTime.setTimeout(delayLineFollowModeSwitch);
-        //Serial.println("Set delayLineFollowModeSwitch: " + String(delayLineFollowModeSwitch));
+        if (DEBUG_LEVEL >= 2) Serial.println("Set delayLineFollowModeSwitch: " + String(delayLineFollowModeSwitch));
       }
       if (lineFollowModeSwitchTime.isReady() && lineFollowZone != 1) {
-        //Serial.println("Confirm set lineFollowZone: " + String(1));
+        if (DEBUG_LEVEL >= 2) Serial.println("Confirm set lineFollowZone: 1");
         lineFollowZone = 1; // Установить новое значение зоны
         Kp = Kp_easy;
         Ki = Ki_easy;
@@ -173,30 +171,15 @@ void loop() {
         regulator.integral = 0; // Обнуляем интегральную составляющую
         speed = speedEasyLine;
       }
-    } else if (CAM_X_EXTREME_L_TRESHOLD <= lineL && lineR <= CAM_X_EXTREME_R_TRESHOLD) { // Крайние значения фигуры линии попадают зону до экстримальной зоны кадра
-      //Serial.println("2");
-      if (lineFollowZone != 2 && !lineFollowModeSwitchTime.isEnabled()) { // Если зона не 1 - центральная
-        delayLineFollowModeSwitch = 100;
-        lineFollowModeSwitchTime.setTimeout(delayLineFollowModeSwitch);
-        //Serial.println("Set delayLineFollowModeSwitch: " + String(delayLineFollowModeSwitch));
-      }
-      if (lineFollowModeSwitchTime.isReady() && lineFollowZone != 2) {
-        //Serial.println("Confirm set lineFollowZone: " + String(2));
-        lineFollowZone = 2; // Установить новое значение зоны
-        Kp = Kp_norm;
-        Ki = Ki_norm;
-        Kd = Kd_norm;
-        speed = speedNormalLine;
-      }
     } else { // Линия за крайней границой слева или справа
-      //Serial.println("3");
-      if (lineFollowZone != 3 && !lineFollowModeSwitchTime.isEnabled()) { // Если зона не 1 - центральная
+      if (DEBUG_LEVEL >= 2) if Serial.println("Got into the zone 2");
+      if (lineFollowZone != 2 && !lineFollowModeSwitchTime.isEnabled()) { // Если зона не 2
         delayLineFollowModeSwitch = 50;
         lineFollowModeSwitchTime.setTimeout(delayLineFollowModeSwitch);
-        //Serial.println("Set delayLineFollowModeSwitch: " + String(delayLineFollowModeSwitch));
+        if (DEBUG_LEVEL >= 2) Serial.println("Set delayLineFollowModeSwitch: " + String(delayLineFollowModeSwitch));
       }
-      if (lineFollowModeSwitchTime.isReady() && lineFollowZone != 3) {
-        //Serial.println("Confirm set lineFollowZone: " + String(3));
+      if (lineFollowModeSwitchTime.isReady() && lineFollowZone != 2) {
+        if (DEBUG_LEVEL >= 2) Serial.println("Confirm set lineFollowZone: 2");
         lineFollowZone = 3; // Установить новое значение зоны
         Kp = Kp_hard;
         Ki = Ki_hard;
@@ -280,19 +263,12 @@ void ParseSerialInputValues() {
     if (key == "pe") {
       Kp_easy = value;
       regulator.Kp = Kp_easy;
-    } else if (key == "pn") {
-      Kp_norm = value;
-      regulator.Kp = Kp_norm;
     } else if (key == "ph") {
       Kp_hard = value;
       regulator.Kp = Kp_hard;
     } else if (key == "ie") {
       Ki_easy = value;
       regulator.Ki = Ki_easy;
-      regulator.integral = 0;
-    } else if (key == "in") {
-      Ki_norm = value;
-      regulator.Ki = Ki_norm;
       regulator.integral = 0;
     } else if (key == "ih") {
       Ki_hard = value;
@@ -301,16 +277,11 @@ void ParseSerialInputValues() {
     } else if (key == "de") {
       Kd_easy = value;
       regulator.Kd = Kd_easy;
-    } else if (key == "dn") {
-      Kd_norm = value;
-      regulator.Kd = Kd_norm;
     } else if (key == "dh") {
       Kd_hard = value;
       regulator.Kd = Kd_hard;
     } else if (key == "se") {
       speedEasyLine = value;
-    } else if (key == "sn") {
-      speedNormalLine = value;
     } else if (key == "sh") {
       speedHardLine = value;
     }
