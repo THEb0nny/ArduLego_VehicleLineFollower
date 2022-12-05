@@ -1,6 +1,6 @@
 // https://www.youtube.com/watch?v=jW3cY4Irs50
 // https://alexgyver.ru/gyverpid/
-// https://alexgyver.ru/gyvertimer/
+// https://github.com/GyverLibs/TimerMs
 // https://github.com/GyverLibs/EncButton
 // https://disk.yandex.ru/i/8yCIjSCpGo80LA
 // https://disk.yandex.ru/i/Jad22IaI3DUQwj
@@ -22,7 +22,7 @@
 #include <SoftwareSerial.h>
 #include <Servo.h>
 #include "GyverPID.h"
-#include "GyverTimer.h"
+#include <TimerMs.h>
 #include <EncButton.h>
 #include "TrackingCamI2C.h"
 
@@ -34,18 +34,18 @@
 #define SERVO_L_PIN 2 // Пин левого серво мотора
 #define SERVO_R_PIN 4 // Пин правого серво мотора
 
-#define MAX_MIN_SERVO_COMAND 100 // Максимальное значение скорости вперёд/назад
+#define MAX_MIN_SERVO_COMAND 100 // Максимальное значение скорости вперёд/назад серво
 
 #define GSERVO_STOP_PULSE 1500 // Значение импулста для остановки мотора, нулевой скорости geekservo
-#define GSERVO_L_CW_L_BOARD_PULSE_WIDTH 1591 // Левая граница ширины импульса вравщения по часовой geekservo левого
-#define GSERVO_L_CW_R_BOARD_PULSE_WIDTH 2500 // Левая граница ширины импульса вравщения по часовой geekservo левого
-#define GSERVO_L_CCW_L_BOARD_PULSE_WIDTH 500 // Левая граница ширины импульса вравщения против часовой geekservo левого
-#define GSERVO_L_CCW_R_BOARD_PULSE_WIDTH 1377 // Правая граница ширины импульса вращения против часовой geekservo левого
+#define GSERVO_L_CW_L_BOARD_PWM 1591 // Левая граница ширины импульса вравщения по часовой geekservo левого
+#define GSERVO_L_CW_R_BOARD_PWM 2500 // Левая граница ширины импульса вравщения по часовой geekservo левого
+#define GSERVO_L_CCW_L_BOARD_PWM 500 // Левая граница ширины импульса вравщения против часовой geekservo левого
+#define GSERVO_L_CCW_R_BOARD_PWM 1377 // Правая граница ширины импульса вращения против часовой geekservo левого
 
-#define GSERVO_R_CW_L_BOARD_PULSE_WIDTH 1589 // Левая граница ширины импульса вравщения по часовой geekservo правого
-#define GSERVO_R_CW_R_BOARD_PULSE_WIDTH 2500 // Правая граница ширины импульса вращения по часовой geekservo правого
-#define GSERVO_R_CCW_L_BOARD_PULSE_WIDTH 500 // Левая граница ширины импульса вравщения против часовой geekservo правого
-#define GSERVO_R_CCW_R_BOARD_PULSE_WIDTH 1376 // Правая граница ширины импульса вращения против часовой geekservo правого
+#define GSERVO_R_CW_L_BOARD_PWM 1589 // Левая граница ширины импульса вравщения по часовой geekservo правого
+#define GSERVO_R_CW_R_BOARD_PWM 2500 // Правая граница ширины импульса вращения по часовой geekservo правого
+#define GSERVO_R_CCW_L_BOARD_PWM 500 // Левая граница ширины импульса вравщения против часовой geekservo правого
+#define GSERVO_R_CCW_R_BOARD_PWM 1376 // Правая граница ширины импульса вращения против часовой geekservo правого
 
 #define GSERVO_L_DIR_MODE false // Режим реверса вращения левого сервомотора
 #define GSERVO_R_DIR_MODE true // Режим реверса вращения правого сервомотора
@@ -72,8 +72,9 @@ float Kp = Kp_easy, Ki = Ki_easy, Kd = Kd_easy; // Начальные коэфф
 
 TrackingCamI2C trackingCam; // Инициализация объекта камеры
 Servo lServoMot, rServoMot; // Инициализация объектов сервомоторов
-EncButton<EB_TICK, RESET_BTN_PIN> btn; // Просто кнопка <KEY>
-GTimer myTimer(MS, 10), lineFollowModeSwitchTime(MS); // Инициализация объекта таймера
+EncButton<EB_TICK, RESET_BTN_PIN> btn; // Инициализация объекта простой кнопки
+TimerMs regulatorTmr(10); // Инициализация объекта таймера цикла регулирования
+TimerMs lineFollowModeSwitchTmr; // Инициализация объекта таймера
 GyverPID regulator(Kp, Ki, Kd, 10); // Инициализируем коэффициенты регулятора и dt
 
 int speedEasyLine = 70, speedHardLine = 35; // Значения скорости на простом, нормальном и сложном участке
@@ -87,7 +88,8 @@ void setup() {
   Serial.setTimeout(10);
   Serial.println();  
   pinMode(LED_PIN, OUTPUT); // Настраиваем пин светодиода
-  lineFollowModeSwitchTime.setMode(TIMER_TIMEOUT); // Настраиваем режим таймера переключения мода движения по линии 
+  regulatorTmr.setPeriodMode(); // Настроем режим условия регулирования на период
+  lineFollowModeSwitchTmr.setTimerMode(); // Настраиваем режим таймера переключения мода движения по линии
   regulator.setDirection(NORMAL); // Направление регулирования (NORMAL/REVERSE)
   regulator.setLimits(-180, 180); // Пределы регулятора
   trackingCam.init(51, 400000); // cam_id - 1..127, default 51, speed - 100000/400000, cam enables auto detection of master clock
@@ -105,9 +107,7 @@ void setup() {
   digitalWrite(LED_PIN, HIGH); // Включаем светодиод
   Serial.println("Ready... press btn");
   lServoMot.attach(SERVO_L_PIN); rServoMot.attach(SERVO_R_PIN); // Подключение сервомоторов
-  // При старте моторы выключаем
-  MotorsControl(0, 0);
-  //MotorSpeed(lServoMot, 0, SERVO_MOT_L_DIR_MODE); MotorSpeed(rServoMot, 0, SERVO_MOT_R_DIR_MODE);
+  MotorsControl(0, 0); // При старте моторы выключаем
   while (true) { // Ждём нажатие кнопки для старта
     btn.tick(); // Опрашиваем кнопку
     if (btn.press()) { // Произошло нажатие
@@ -116,15 +116,17 @@ void setup() {
       break;
     }
   }
+  regulatorTmr.start(); // Запускаем таймер цикла регулирования
   // Записываем время перед стартом loop
   currTime = millis();
   prevTime = currTime;
 }
 
 void loop() {
+  regulatorTmr.tick();
   CheckBtnClick(); // Вызываем функцию опроса кнопки
   ParseSerialInputValues(); // Парсинг значений из Serial
-  if (myTimer.isReady()) { // Раз в 10 мсек выполнять
+  if (regulatorTmr.ready()) { // Раз в 10 мсек выполнять
     currTime = millis();
     loopTime = currTime - prevTime;
     prevTime = currTime;
@@ -146,9 +148,9 @@ void loop() {
         lineL = left; lineR = right;
       }
       if (DEBUG_LEVEL >= 2) { // Печать информации о фигуре
-        Serial.print(cx, DEC); Serial.print(" "); Serial.print(cy, DEC); Serial.print(" ");
-        Serial.print(bottom, DEC); Serial.print(" ");
-        Serial.print(left, DEC); Serial.print(" "); Serial.print(right, DEC); Serial.print(" ");
+        Serial.print(cx, DEC); Serial.print("\t"); Serial.print(cy, DEC); Serial.print("\t");
+        Serial.print(bottom, DEC); Serial.print("\t");
+        Serial.print(left, DEC); Serial.print("\t"); Serial.print(right, DEC); Serial.print("\t");
         Serial.print(area, DEC); Serial.println();
       }
     }
@@ -158,12 +160,13 @@ void loop() {
     regulator.setpoint = error; // Передаём ошибку регулятору
     if (CAM_X_CENTER_L_TRESHOLD <= lineX && lineX <= CAM_X_CENTER_R_TRESHOLD) { // Центр фигуры линии X в центральной зоне кадра
       if (DEBUG_LEVEL >= 2) Serial.println("Got into the zone 1");
-      if (lineFollowZone != 1 && !lineFollowModeSwitchTime.isEnabled()) { // Если зона не 1 - центральная
+      if (lineFollowZone != 1 && !lineFollowModeSwitchTmr.active()) { // Если зона не 1 - центральная
         delayLineFollowModeSwitch = 300;
-        lineFollowModeSwitchTime.setTimeout(delayLineFollowModeSwitch);
+        lineFollowModeSwitchTmr.setTime(delayLineFollowModeSwitch);
+        lineFollowModeSwitchTmr.start();
         if (DEBUG_LEVEL >= 2) Serial.println("Set delayLineFollowModeSwitch: " + String(delayLineFollowModeSwitch));
       }
-      if (lineFollowModeSwitchTime.isReady() && lineFollowZone != 1) {
+      if (lineFollowModeSwitchTmr.tick() && lineFollowZone != 1) {
         if (DEBUG_LEVEL >= 2) Serial.println("Confirm set lineFollowZone: 1");
         lineFollowZone = 1; // Установить новое значение зоны
         Kp = Kp_easy;
@@ -174,12 +177,13 @@ void loop() {
       }
     } else { // Линия за крайней границой слева или справа
       if (DEBUG_LEVEL >= 2) Serial.println("Got into the zone 2");
-      if (lineFollowZone != 2 && !lineFollowModeSwitchTime.isEnabled()) { // Если зона не 2
+      if (lineFollowZone != 2 && !lineFollowModeSwitchTmr.active()) { // Если зона не 2
         delayLineFollowModeSwitch = 50;
-        lineFollowModeSwitchTime.setTimeout(delayLineFollowModeSwitch);
+        lineFollowModeSwitchTmr.setTime(delayLineFollowModeSwitch);
+        lineFollowModeSwitchTmr.start();
         if (DEBUG_LEVEL >= 2) Serial.println("Set delayLineFollowModeSwitch: " + String(delayLineFollowModeSwitch));
       }
-      if (lineFollowModeSwitchTime.isReady() && lineFollowZone != 2) {
+      if (lineFollowModeSwitchTmr.tick() && lineFollowZone != 2) {
         if (DEBUG_LEVEL >= 2) Serial.println("Confirm set lineFollowZone: 2");
         lineFollowZone = 3; // Установить новое значение зоны
         Kp = Kp_hard;
@@ -198,18 +202,20 @@ void loop() {
     }
 
     // Запустить моторы для проверки
-    //MotorSpeed(lServoMot, 90, GSERVO_L_DIR_MODE, GSERVO_L_CW_L_BOARD_PULSE_WIDTH, GSERVO_L_CW_R_BOARD_PULSE_WIDTH, GSERVO_L_CCW_L_BOARD_PULSE_WIDTH, GSERVO_L_CCW_R_BOARD_PULSE_WIDTH);
-    //MotorSpeed(rServoMot, 90, GSERVO_R_DIR_MODE, GSERVO_R_CW_L_BOARD_PULSE_WIDTH, GSERVO_R_CW_R_BOARD_PULSE_WIDTH, GSERVO_R_CCW_L_BOARD_PULSE_WIDTH, GSERVO_R_CCW_R_BOARD_PULSE_WIDTH);
+    //MotorSpeed(lServoMot, 90, GSERVO_L_DIR_MODE, GSERVO_L_CW_L_BOARD_PWM, GSERVO_L_CW_R_BOARD_PWM, GSERVO_L_CCW_L_BOARD_PWM, GSERVO_L_CCW_R_BOARD_PWM);
+    //MotorSpeed(rServoMot, 90, GSERVO_R_DIR_MODE, GSERVO_R_CW_L_BOARD_PWM, GSERVO_R_CW_R_BOARD_PWM, GSERVO_R_CCW_L_BOARD_PWM, GSERVO_R_CCW_R_BOARD_PWM);
     if (DEBUG_LEVEL >= 2) {
       Serial.print("Line: "); // Печаталь информации о выбранной фигуре
-      Serial.print(lineX, DEC); Serial.print(" ");
-      Serial.print(lineY, DEC); Serial.print(" "); Serial.print(lineB, DEC); Serial.print(" ");
-      Serial.print(lineL, DEC); Serial.print(" "); Serial.print(lineR, DEC); Serial.print(" ");
+      Serial.print(lineX, DEC); Serial.print("\t");
+      Serial.print(lineY, DEC); Serial.print("\t");
+      Serial.print(lineB, DEC); Serial.print("\t");
+      Serial.print(lineL, DEC); Serial.print("\t");
+      Serial.print(lineR, DEC); Serial.print("\t");
       Serial.print(lineArea, DEC); Serial.println();
     }
     if (DEBUG_LEVEL >= 1 || DEBUG_LEVEL == -1) {
-      Serial.print("loopTime: " + String(loopTime) + ", ");
-      Serial.print("error: " + String(error) + ", ");
+      Serial.print("loopTime: " + String(loopTime) + "\t");
+      Serial.print("error: " + String(error) + "\t");
       Serial.println("u: " + String(u));
     }
   }
@@ -220,20 +226,22 @@ void MotorsControl(int dir, int speed) {
   int lServoMotSpeed = speed + dir, rServoMotSpeed = speed - dir;
   float z = (float) speed / max(abs(lServoMotSpeed), abs(rServoMotSpeed)); // Вычисляем отношение желаемой мощности к наибольшей фактической
   lServoMotSpeed *= z, rServoMotSpeed *= z;
-  MotorSpeed(lServoMot, lServoMotSpeed, GSERVO_L_DIR_MODE, GSERVO_L_CW_L_BOARD_PULSE_WIDTH, GSERVO_L_CW_R_BOARD_PULSE_WIDTH, GSERVO_L_CCW_L_BOARD_PULSE_WIDTH, GSERVO_L_CCW_R_BOARD_PULSE_WIDTH);
-  MotorSpeed(rServoMot, rServoMotSpeed, GSERVO_R_DIR_MODE, GSERVO_R_CW_L_BOARD_PULSE_WIDTH, GSERVO_R_CW_R_BOARD_PULSE_WIDTH, GSERVO_R_CCW_L_BOARD_PULSE_WIDTH, GSERVO_R_CCW_R_BOARD_PULSE_WIDTH);
+  if (DEBUG_LEVEL >= 2) Serial.print("lServoMot ->\t");  
+  MotorSpeed(lServoMot, lServoMotSpeed, GSERVO_L_DIR_MODE, GSERVO_L_CW_L_BOARD_PWM, GSERVO_L_CW_R_BOARD_PWM, GSERVO_L_CCW_L_BOARD_PWM, GSERVO_L_CCW_R_BOARD_PWM);
+  if (DEBUG_LEVEL >= 2) Serial.print("rServoMot ->\t");  
+  MotorSpeed(rServoMot, rServoMotSpeed, GSERVO_R_DIR_MODE, GSERVO_R_CW_L_BOARD_PWM, GSERVO_R_CW_R_BOARD_PWM, GSERVO_R_CCW_L_BOARD_PWM, GSERVO_R_CCW_R_BOARD_PWM);
 }
 
 // Управление серво мотором
-void MotorSpeed(Servo servoMot, int inputSpeed, bool rotateMode, int gservoCWLBPulseW, int gservoCWRBPulseW, int gservoCCWLBPulseW, int gservoCCWRBPulseW) {
+void MotorSpeed(Servo servoMot, int inputSpeed, bool rotateMode, int gservoCWLBoardPWM, int gservoCWRBoardPWM, int gservoCCWLBoardPWM, int gservoCCWRBoardPWM) {
   // Servo, 0->FW, 90->stop, 180->BW
-  if (DEBUG_LEVEL >= 2) Serial.print("inputSpeed: " + String(inputSpeed) + ", ");
+  if (DEBUG_LEVEL >= 2) Serial.print("inputSpeed: " + String(inputSpeed) + "\t");
   inputSpeed = constrain(inputSpeed, -MAX_MIN_SERVO_COMAND, MAX_MIN_SERVO_COMAND) * (rotateMode? -1 : 1); // Обрезать скорость и установить реверс, если есть такая установка
   int speed = map(inputSpeed, -MAX_MIN_SERVO_COMAND, MAX_MIN_SERVO_COMAND, 0, 180); // Изменить диапазон, который понимает серво
-  if (DEBUG_LEVEL >= 2) Serial.println("speedConverted: " + String(speed));
+  if (DEBUG_LEVEL >= 2) Serial.print("speedConverted: " + String(speed) + "\t");
   // Перевести в диапазон шим сигнала  
-  if (inputSpeed > 0) speed = map(speed, MAX_MIN_SERVO_COMAND, 180, gservoCWLBPulseW, gservoCWRBPulseW); // Скорость, которая больше 0
-  else if (inputSpeed < 0) speed = map(speed, 0, MAX_MIN_SERVO_COMAND, gservoCCWLBPulseW, gservoCCWRBPulseW); // Скорость, которая ниже 0
+  if (inputSpeed > 0) speed = map(speed, MAX_MIN_SERVO_COMAND, 180, gservoCWLBoardPWM, gservoCWRBoardPWM); // Скорость, которая больше 0
+  else if (inputSpeed < 0) speed = map(speed, 0, MAX_MIN_SERVO_COMAND, gservoCCWLBoardPWM, gservoCCWRBoardPWM); // Скорость, которая ниже 0
   else speed = GSERVO_STOP_PULSE; // Нулевая скорость
   servoMot.writeMicroseconds(speed); // Установить сервомотору шим сигнал
   if (DEBUG_LEVEL >= 2) Serial.println("outServoSpeed: " + String(speed));
