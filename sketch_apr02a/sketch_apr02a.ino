@@ -34,18 +34,18 @@
 #define SERVO_L_PIN 2 // Пин левого серво мотора
 #define SERVO_R_PIN 4 // Пин правого серво мотора
 
-#define MAX_MIN_SERVO_COMAND 90 // Максимальное значение скорости вперёд/назад
+#define MAX_MIN_SERVO_COMAND 100 // Максимальное значение скорости вперёд/назад
 
 #define GSERVO_STOP_PULSE 1500 // Значение импулста для остановки мотора, нулевой скорости geekservo
-#define GSERVO_L_CW_L_BOARD_PULSE_WIDTH 1595 // Левая граница ширины импульса вравщения по часовой geekservo левого
+#define GSERVO_L_CW_L_BOARD_PULSE_WIDTH 1591 // Левая граница ширины импульса вравщения по часовой geekservo левого
 #define GSERVO_L_CW_R_BOARD_PULSE_WIDTH 2500 // Левая граница ширины импульса вравщения по часовой geekservo левого
 #define GSERVO_L_CCW_L_BOARD_PULSE_WIDTH 500 // Левая граница ширины импульса вравщения против часовой geekservo левого
-#define GSERVO_L_CCW_R_BOARD_PULSE_WIDTH 1365 // Правая граница ширины импульса вращения против часовой geekservo левого
+#define GSERVO_L_CCW_R_BOARD_PULSE_WIDTH 1377 // Правая граница ширины импульса вращения против часовой geekservo левого
 
-#define GSERVO_R_CW_L_BOARD_PULSE_WIDTH 1595 // Левая граница ширины импульса вравщения по часовой geekservo правого
+#define GSERVO_R_CW_L_BOARD_PULSE_WIDTH 1589 // Левая граница ширины импульса вравщения по часовой geekservo правого
 #define GSERVO_R_CW_R_BOARD_PULSE_WIDTH 2500 // Правая граница ширины импульса вращения по часовой geekservo правого
 #define GSERVO_R_CCW_L_BOARD_PULSE_WIDTH 500 // Левая граница ширины импульса вравщения против часовой geekservo правого
-#define GSERVO_R_CCW_R_BOARD_PULSE_WIDTH 1365 // Правая граница ширины импульса вращения против часовой geekservo правого
+#define GSERVO_R_CCW_R_BOARD_PULSE_WIDTH 1376 // Правая граница ширины импульса вращения против часовой geekservo правого
 
 #define GSERVO_L_DIR_MODE false // Режим реверса вращения левого сервомотора
 #define GSERVO_R_DIR_MODE true // Режим реверса вращения правого сервомотора
@@ -92,13 +92,14 @@ void setup() {
   regulator.setLimits(-180, 180); // Пределы регулятора
   trackingCam.init(51, 400000); // cam_id - 1..127, default 51, speed - 100000/400000, cam enables auto detection of master clock
   while (true) { // Ждём пока камера начнёт работать
+    int area = 0, bottom = 0;
     uint8_t nBlobs = trackingCam.readBlobs(); // Считать найденные объекты
     if (DEBUG_LEVEL >= 2) Serial.println(nBlobs); // Выводим количество найденных blobs
     for(int i = 0; i < nBlobs; i++) { // Печать информации о blobs
-      int area = trackingCam.blob[i].area;
-      int bottom = trackingCam.blob[i].bottom;
-      if (area >= 30 && bottom > LINE_Y_BOTTOM_START || millis() >= MAX_CAM_WAIT_AT_START) break; // Если нашли большое большую область и она начинается с низу кадра, то выбрасываем из цикла или выбрасываем в том случае, если прошлом максимальное время ожидания
+      area = trackingCam.blob[i].area;
+      bottom = trackingCam.blob[i].bottom;
     }
+    if (area >= 30 && bottom > LINE_Y_BOTTOM_START || millis() >= MAX_CAM_WAIT_AT_START) break; // Если нашли большое большую область и она начинается с низу кадра, то выбрасываем из цикла, или выбрасываем в том случае, если прошлом максимальное время ожидания
     delay(500); // Задержка между проверками
   }
   digitalWrite(LED_PIN, HIGH); // Включаем светодиод
@@ -172,7 +173,7 @@ void loop() {
         speed = speedEasyLine;
       }
     } else { // Линия за крайней границой слева или справа
-      if (DEBUG_LEVEL >= 2) if Serial.println("Got into the zone 2");
+      if (DEBUG_LEVEL >= 2) Serial.println("Got into the zone 2");
       if (lineFollowZone != 2 && !lineFollowModeSwitchTime.isEnabled()) { // Если зона не 2
         delayLineFollowModeSwitch = 50;
         lineFollowModeSwitchTime.setTimeout(delayLineFollowModeSwitch);
@@ -226,22 +227,16 @@ void MotorsControl(int dir, int speed) {
 // Управление серво мотором
 void MotorSpeed(Servo servoMot, int inputSpeed, bool rotateMode, int gservoCWLBPulseW, int gservoCWRBPulseW, int gservoCCWLBPulseW, int gservoCCWRBPulseW) {
   // Servo, 0->FW, 90->stop, 180->BW
-  if (DEBUG_LEVEL >= 2) {
-    Serial.print("inputSpeed: " + String(inputSpeed) + ", ");
-  }
+  if (DEBUG_LEVEL >= 2) Serial.print("inputSpeed: " + String(inputSpeed) + ", ");
   inputSpeed = constrain(inputSpeed, -MAX_MIN_SERVO_COMAND, MAX_MIN_SERVO_COMAND) * (rotateMode? -1 : 1); // Обрезать скорость и установить реверс, если есть такая установка
-  int speed = map(inputSpeed, -90, 90, 0, 180); // Изменить диапазон, который понимает серво
-  if (DEBUG_LEVEL >= 2) {
-    Serial.println("speedConverted: " + String(speed));
-  }
+  int speed = map(inputSpeed, -MAX_MIN_SERVO_COMAND, MAX_MIN_SERVO_COMAND, 0, 180); // Изменить диапазон, который понимает серво
+  if (DEBUG_LEVEL >= 2) Serial.println("speedConverted: " + String(speed));
   // Перевести в диапазон шим сигнала  
-  if (inputSpeed > 0) speed = map(speed, 90, 180, gservoCWLBPulseW, gservoCWRBPulseW); // Скорость, которая больше 0
-  else if (inputSpeed < 0) speed = map(speed, 0, 90, gservoCCWLBPulseW, gservoCCWRBPulseW); // Скорость, которая ниже 0
+  if (inputSpeed > 0) speed = map(speed, MAX_MIN_SERVO_COMAND, 180, gservoCWLBPulseW, gservoCWRBPulseW); // Скорость, которая больше 0
+  else if (inputSpeed < 0) speed = map(speed, 0, MAX_MIN_SERVO_COMAND, gservoCCWLBPulseW, gservoCCWRBPulseW); // Скорость, которая ниже 0
   else speed = GSERVO_STOP_PULSE; // Нулевая скорость
   servoMot.writeMicroseconds(speed); // Установить сервомотору шим сигнал
-  if (DEBUG_LEVEL >= 2) {
-    Serial.println("outServoSpeed: " + String(speed));
-  }
+  if (DEBUG_LEVEL >= 2) Serial.println("outServoSpeed: " + String(speed));
 }
 
 // Парсинг значений из Serial
