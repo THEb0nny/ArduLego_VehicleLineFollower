@@ -234,17 +234,16 @@ void MotorsControl(int dir, int speed) {
 
 // Управление серво мотором
 void MotorSpeed(Servo servoMot, int inputSpeed, bool rotateMode, int gservoCWLBoardPWM, int gservoCWRBoardPWM, int gservoCCWLBoardPWM, int gservoCCWRBoardPWM) {
-  // Servo, 0->FW, 90->stop, 180->BW
-  if (DEBUG_LEVEL >= 2) Serial.print("inputSpeed: " + String(inputSpeed) + "\t");
+  if (DEBUG_LEVEL >= 2) Serial.print("inputSpeed: " + String(inputSpeed) + "\t\t");
   inputSpeed = constrain(inputSpeed, -MAX_MIN_SERVO_COMAND, MAX_MIN_SERVO_COMAND) * (rotateMode? -1 : 1); // Обрезать скорость и установить реверс, если есть такая установка
-  int speed = map(inputSpeed, -MAX_MIN_SERVO_COMAND, MAX_MIN_SERVO_COMAND, 0, 180); // Изменить диапазон, который понимает серво
-  if (DEBUG_LEVEL >= 2) Serial.print("speedConverted: " + String(speed) + "\t");
-  // Перевести в диапазон шим сигнала  
-  if (inputSpeed > 0) speed = map(speed, MAX_MIN_SERVO_COMAND, 180, gservoCWLBoardPWM, gservoCWRBoardPWM); // Скорость, которая больше 0
-  else if (inputSpeed < 0) speed = map(speed, 0, MAX_MIN_SERVO_COMAND, gservoCCWLBoardPWM, gservoCCWRBoardPWM); // Скорость, которая ниже 0
-  else speed = GSERVO_STOP_PULSE; // Нулевая скорость
+  if (DEBUG_LEVEL >= 2) Serial.print("inputSpeedProcessed " + String(inputSpeed) + "\t\t");
+  int speed = 0; // Инициализируем переменную, которую передадим сервоприводу
+  // Перевести в диапазон шим сигнала
+  if (inputSpeed > 0) speed = map(inputSpeed, 0, MAX_MIN_SERVO_COMAND, gservoCWLBoardPWM, gservoCWRBoardPWM); // Скорость, которая больше 0
+  else if (inputSpeed < 0) speed = map(inputSpeed, -MAX_MIN_SERVO_COMAND, 0, gservoCCWLBoardPWM, gservoCCWRBoardPWM); // Скорость, которая ниже 0
+  else speed = GSERVO_STOP_PWM; // Нулевая скорость
   servoMot.writeMicroseconds(speed); // Установить сервомотору шим сигнал
-  if (DEBUG_LEVEL >= 2) Serial.println("outServoSpeed: " + String(speed));
+  if (DEBUG_LEVEL >= 2) Serial.println("speedConverted: " + String(speed));
 }
 
 // Парсинг значений из Serial
