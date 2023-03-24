@@ -26,8 +26,8 @@
 #include <EncButton.h>
 #include "TrackingCamI2C.h"
 
-#define OFF_GSERVO false // Отключить серво
-#define ON_GSERVO_FOR_TEST false // Включить серво для тертирования, OFF_GSERVO должно быть false
+#define ON_GSERVO_CONTROL true // Включить управление серво
+#define ON_GSERVO_FOR_TEST false // Включить серво для тертирования, ON_GSERVO_CONTROL должно быть false
 
 #define SWITCH_ZONE_MODE_DEBUG true // Отладка обработки алгоритма о сменах зоны
 #define PRINT_FROM_CAM_DEBUG false // Отладка информации с камеры
@@ -231,7 +231,8 @@ void loop() {
     
     regulator.setDt(loopTime != 0 ? loopTime : 1); // Установка dt для регулятора
     float u = regulator.getResult(); // Управляющее воздействие с регулятора
-    if (OFF_GSERVO) MotorsControl(u, speed); // Для запуска моторов
+    
+    if (ON_GSERVO_CONTROL) MotorsControl(u, speed); // Для управления моторами регулятором
 
     // Запустить моторы для проверки
     if (ON_GSERVO_FOR_TEST) {
@@ -239,8 +240,9 @@ void loop() {
       MotorSpeed(rServoMot, 90, GSERVO_R_DIR_MODE, GSERVO_R_CW_L_BOARD_PWM, GSERVO_R_CW_R_BOARD_PWM, GSERVO_R_CCW_L_BOARD_PWM, GSERVO_R_CCW_R_BOARD_PWM);
     }
     
+    // Печаталь информации о выбранной фигуре
     if (PRINT_INFO_ABOUT_OBJ_DEBUG) {
-      Serial.print("Line: "); // Печаталь информации о выбранной фигуре
+      Serial.print("Line: ");
       Serial.print(lineX, DEC); Serial.print("\t");
       Serial.print(lineY, DEC); Serial.print("\t");
       Serial.print(lineB, DEC); Serial.print("\t");
@@ -248,6 +250,7 @@ void loop() {
       Serial.print(lineR, DEC); Serial.print("\t");
       Serial.print(lineArea, DEC); Serial.println();
     }
+    // Для отладки основной информации о регулировании
     if (PRINT_DT_ERR_U_DEBUG) {
       Serial.print("loopTime: " + String(loopTime) + "\t");
       Serial.print("error: " + String(error) + "\t");
