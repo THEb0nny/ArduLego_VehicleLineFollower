@@ -46,8 +46,8 @@
 #define LINE_SEN_L_PIN 4 // Пин левого датчика линии
 #define LINE_SEN_R_PIN 7 // Пин левого датчика линии
 
-#define TIME_DELAY_LF_LIGHT_MODE 300 // Время для подтверждения лёгкой линии
-#define TIME_DELAY_LF_HARD_MODE 50 // Время для подтверждения сложной линии линии
+#define DELAY_LINE_FOLLOW_LIGHT_MODE 300 // Время для подтверждения лёгкой линии
+#define DELAY_LINE_FOLLOW_HARD_MODE 50 // Время для подтверждения сложной линии линии
 
 #define MAX_MIN_SERVO_COMAND 100 // Максимальное значение скорости вперёд/назад серво
 
@@ -190,7 +190,7 @@ void loop() {
     
     if (CAM_X_CENTER_L_TRESHOLD <= lineX && lineX <= CAM_X_CENTER_R_TRESHOLD) { // Центр фигуры линии X в центральной зоне кадра
       if (lineFollowZone != 0 && !lineFollowModeSwitchTmr.active()) { // Если зона не 0 - центральная
-        delayLineFollowModeSwitch = TIME_DELAY_LF_HARD_MODE; // Время для подтверждения, что камера видит простую зону
+        delayLineFollowModeSwitch = DELAY_LINE_FOLLOW_HARD_MODE; // Время для подтверждения, что камера видит простую зону
         lineFollowModeSwitchTmr.setTime(delayLineFollowModeSwitch); // Установить время таймеру
         lineFollowModeSwitchTmr.start(); // Запустить таймер
         if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Set delayLineFollowModeSwitch: " + String(delayLineFollowModeSwitch));
@@ -206,7 +206,7 @@ void loop() {
       }
     } else { // Линия за крайней границой слева или справа
       if (abs(lineFollowZone) != 1 && !lineFollowModeSwitchTmr.active()) { // Если зона не -1 или 1
-        delayLineFollowModeSwitch = TIME_DELAY_LF_LIGHT_MODE; // Время для подтверждения, что камера видит сложную зону
+        delayLineFollowModeSwitch = DELAY_LINE_FOLLOW_LIGHT_MODE; // Время для подтверждения, что камера видит сложную зону
         lineFollowModeSwitchTmr.setTime(delayLineFollowModeSwitch); // Установить время таймеру
         lineFollowModeSwitchTmr.start(); // Запустить таймер
         if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Set delayLineFollowModeSwitch: " + String(delayLineFollowModeSwitch));
@@ -216,7 +216,6 @@ void loop() {
         // Линия слева от центральной зоны?
         if (CAM_X_CENTER_L_TRESHOLD >= LINE_FOLLOW_SET_POINT) lineFollowZone = -1; // Установить новое значение зоны
         else lineFollowZone = 1; // Иначе зона справа
-
         Kp = Kp_hard;
         Ki = Ki_hard;
         Kd = Kd_hard;
