@@ -47,6 +47,13 @@
 #define L_LINE_SEN_PIN 4 // Пин левого датчика линии
 #define R_LINE_SEN_PIN 7 // Пин левого датчика линии
 
+#define REF_RAW_BLACK_LS 600 // Сырое значение чёрного левого датчика линии
+#define REF_RAW_WHITE_LS 27 // Сырое значение белого левого датчика линии
+#define REF_RAW_BLACK_RS 600 // Сырое значение чёрного правого датчика линии
+#define REF_RAW_WHITE_RS 27 // Сырое значение белого правого датчика линии
+
+#define REF_LS_TRESHOLD 30 // Пороговое значение для определения чёрного
+
 #define DELAY_LINE_FOLLOW_LIGHT_MODE 300 // Время для подтверждения лёгкой линии
 #define DELAY_LINE_FOLLOW_HARD_MODE 50 // Время для подтверждения сложной линии линии
 
@@ -95,6 +102,7 @@ GyverPID regulator(Kp_easy, Ki_easy, Kd_easy, 10); // Инициализируе
 
 int speedEasyLine = 80, speedHardLine = 35, speedReturnToLine = 35; // Значения скорости на простом, нормальном и сложном участке
 int speed = speedEasyLine; // Скорость
+float u = 0; // Переменная для хранения управляющего воздействия с регулятора
 
 byte lineFollowZone = 1; // Зона, в которой робот движется, изначально по центру
 
@@ -178,8 +186,12 @@ void loop() {
     
     CheckBtnClick(); // Повторно вызываем функцию опроса с кнопки
 
-    int lLineSen = digitalRead(L_LINE_SEN_PIN); // Левый датчик цвета
-    int rLineSen = digitalRead(R_LINE_SEN_PIN); // Правый датчик цвета
+    int lLineSenRawVal = analogRead(L_LINE_SEN_PIN); // Сырое значение отражения с левого датчика линии
+    int rLineSenRawVal = analogRead(R_LINE_SEN_PIN); // Сырое значение отражения с правого датчика линии
+    int lLineSenVal = constrain(map(lLineSenRawVal, REF_RAW_BLACK_LS, REF_RAW_WHITE_LS, 0, 100), 0, 100); // Обработаные значения отражения левого датчика линии
+    int rLineSenVal = constrain(map(rLineSenRawVal, REF_RAW_BLACK_RS, REF_RAW_WHITE_RS, 0, 100), 0, 100); // Обработаные значения отражения правого датчика линии
+    bool lLineSen = (lLineSenVal < REF_LS_TRESHOLD ? true : false); // Логическое значение о переходе с белого на чёрное левого датчика линии
+    bool rLineSen = (rLineSenVal < REF_LS_TRESHOLD ? true : false); // Логическое значение о переходе с белого на чёрное правого датчика линии
     if (PRINT_LINE_SEN_VAL_DEBUG) Serial.println("lLineSen: " + String(lLineSen) + "\t" + "rLineSen: " + String(rLineSen));
 
     int error = (lineX == 0 ? 0 : lineX - LINE_FOLLOW_SET_POINT); // Нахождение ошибки
@@ -227,7 +239,7 @@ void loop() {
         }
       }
       regulator.setDt(loopTime != 0 ? loopTime : 1); // Установка dt для регулятора
-      float u = regulator.getResult(); // Управляющее воздействие с регулятора
+      u = regulator.getResult(); // Управляющее воздействие с регулятора
       if (ON_GSERVO_CONTROL) ChassisControl(u, speed); // Для управления моторами регулятором
     } else if (lineFollowZone == -1) { // Если линия была потеряна слева
       ChassisControl(-100, speedReturnToLine); // Для управления моторами
