@@ -17,8 +17,6 @@
  * 9-IC0 |O O| 10-ID1
 */
 
-#define PID_OPTIMIZED_I // Параметр для оптимизации суммы регулятора
-
 #include <SoftwareSerial.h>
 #include <Servo.h>
 #include "GyverPID.h"
@@ -29,12 +27,13 @@
 #define ON_GSERVO_CONTROL true // Включить управление серво
 #define ON_GSERVO_FOR_TEST false // Включить серво для тертирования, ON_GSERVO_CONTROL должно быть false
 
-#define SWITCH_ZONE_MODE_DEBUG false // Отладка обработки алгоритма о сменах зоны
+#define SWITCH_ZONE_MODE_DEBUG true // Отладка обработки алгоритма о сменах зоны
+#define PRINT_START_BLOB_N_FROM_CAM_DEBUG false // Отладка информации с камеры при старте
 #define PRINT_FROM_CAM_DEBUG false // Отладка информации с камеры
 #define PRINT_LINE_SEN_RAW_VAL_DEBUG false // Печать информации о сырых значений с датчиков линии
 #define PRINT_LINE_SEN_VAL_DEBUG false // Печать информации о логических значений с датчиков линии
 #define PRINT_INFO_ABOUT_OBJ_DEBUG false // Отладка информации о выбранном объекте в качестве линии
-#define PRINT_DT_ERR_U_DEBUG false // Печать информации о loopTime, error, u
+#define PRINT_DT_ERR_U_DEBUG true // Печать информации о loopTime, error, u
 
 #define MOTORS_CONTROL_FUNC_DEBUG false // Отдалка функции MotorsControl
 #define MOTOR_SPEED_FUNC_DEBUG false // Отдалка функции MotorsControl
@@ -56,7 +55,7 @@
 #define REF_LS_TRESHOLD 30 // Пороговое значение для определения чёрного
 
 #define DELAY_LINE_FOLLOW_LIGHT_MODE 300 // Время для подтверждения лёгкой линии
-#define DELAY_LINE_FOLLOW_HARD_MODE 50 // Время для подтверждения сложной линии линии
+#define DELAY_LINE_FOLLOW_HARD_MODE 150 // Время для подтверждения сложной линии линии
 
 #define MAX_MIN_SERVO_COMMAND 100 // Максимальное значение скорости вперёд/назад серво
 
@@ -75,7 +74,7 @@
 #define GSERVO_R_DIR_MODE true // Режим реверса вращения правого сервомотора
 
 #define CAM_WIDTH 310 // Ширина кадра от камеры
-#define CAM_X_CENTER_BORDER_OFFSET 100 // Околоцентральная граница
+#define CAM_X_CENTER_BORDER_OFFSET 80 // Околоцентральная граница
 #define CAM_X_CENTER_L_TRESHOLD (CAM_WIDTH / 2) - CAM_X_CENTER_BORDER_OFFSET // Левое значение центральной границы
 #define CAM_X_CENTER_R_TRESHOLD (CAM_WIDTH / 2) + CAM_X_CENTER_BORDER_OFFSET // Правое значение центральной границы
 
@@ -86,7 +85,6 @@
 #define MAX_CAM_WAIT_AT_START 7000 // Максимальное время ожидания подключения камеры, это защитный параметр
 
 unsigned long currTime, prevTime, loopTime; // Объявление переменных времени
-unsigned int delayLineFollowModeSwitch = 0; // Переменные для хранения время задержки переключения режима движения по линии по зонам
 
 float Kp_easy = 0.3, Kp_hard = 0.5; // Пропрорциональные коэффиценты, при прямых участках и поворотах
 float Ki_easy = 0, Ki_hard = 0.01; // Интегральные коэффициенты, при прямых участках и поворотах
@@ -96,7 +94,7 @@ TrackingCamI2C trackingCam; // Инициализация объекта кам�
 Servo lServoMot, rServoMot; // Инициализация объектов сервомоторов
 EncButton<EB_TICK, RESET_BTN_PIN> btn; // Инициализация объекта простой кнопки
 TimerMs regulatorTmr(10); // Инициализация объекта таймера цикла регулирования
-TimerMs lineFollowModeSwitchTmr; // Инициализация объекта таймера
+TimerMs lineFollowEasyModeSwitchTmr, lineFollowHardModeSwitchTmr; // Инициализация объектов таймеров
 GyverPID regulator(Kp_easy, Ki_easy, Kd_easy, 10); // Инициализируем коэффициенты регулятора и dt
 
 int speedEasyLine = 80, speedHardLine = 35, speedReturnToLine = 35; // Переменная для хренения хначения скорости на простом, сложном участке и при слёте с линии
@@ -115,15 +113,16 @@ void setup() {
   pinMode(L_LINE_SEN_PIN, INPUT); // Настраиваем пин левого датчика линии
   pinMode(R_LINE_SEN_PIN, INPUT); // Настраиваем пин правого датчика линии
   regulatorTmr.setPeriodMode(); // Настроем режим условия регулирования на период
-  lineFollowModeSwitchTmr.setTimerMode(); // Настраиваем режим таймера переключения мода движения по линии
+  lineFollowEasyModeSwitchTmr.setTimerMode(); // Настраиваем режим таймера переключения мода движения по линии
+  lineFollowHardModeSwitchTmr.setTimerMode(); // Настраиваем режим таймера переключения мода движения по линии
   regulator.setDirection(NORMAL); // Направление регулирования (NORMAL/REVERSE)
   regulator.setLimits(-180, 180); // Пределы регулятора
   trackingCam.init(51, 400000); // cam_id - 1..127, default 51, speed - 100000/400000, cam enables auto detection of master clock
   while (true) { // Ждём пока камера начнёт работать
     uint8_t nBlobs = trackingCam.readBlobs(); // Считать найденные объекты
-    Serial.println(nBlobs); // Выводим количество найденных blobs
+    if (PRINT_START_BLOB_N_FROM_CAM_DEBUG) Serial.println(nBlobs); // Выводим количество найденных блобах
     int maxArea = 0, bottom = 0; // Переменные для записи максимального размера и значения, где начинается линия по Y
-    for(int i = 0; i < nBlobs; i++) { // Печать информации о blobs
+    for(int i = 0; i < nBlobs; i++) { // Печать информации о блобах
       int area = trackingCam.blob[i].area;
       maxArea = max(maxArea, area); // Найти самый большой блоб по размеру
       bottom = trackingCam.blob[i].bottom;
@@ -150,8 +149,8 @@ void setup() {
 }
 
 void loop() {
-  regulatorTmr.tick(); // Обработка таймера цикла регулирования
-  CheckBtnClick(); // Вызываем функцию опроса с кнопки  
+  regulatorTmr.tick(); // Обработка таймера регулирования
+  CheckBtnClick(); // Вызываем функцию опроса с кнопки 
   ParseSerialInputValues(); // Парсинг значений из Serial
 
   if (regulatorTmr.ready()) { // Раз в 10 мсек выполнять
@@ -198,20 +197,21 @@ void loop() {
     // Проверка на датчики защиты слёта с линии
     if (lLineSen == true && rLineSen == false) { // Если левый датчик среагировал на линию, а правый нет
       if (abs(lineFollowZone) != 2) { // Только, если до этого значение зоны было другим, тогда обновляем зону
-        if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Flew off the line side RIGHT");
+        if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Flew off the line side LEFT");
         SetZoneParam(Kp_hard, Ki_hard, Kd_hard, true, speedReturnToLine); // Установить новые значения параметров зоны
-        lineFollowZone = -2; // Установить новое значение зоны
+        lineFollowZone = -2; // Установить новое значение зоны слева
       }
     } else if (lLineSen == false && rLineSen == true) { // Если правый датчик среагировал на линию, а левый нет
       if (abs(lineFollowZone) != 2) { // Один раз обновить значения
-        if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Flew off the line side LEFT");
+        if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Flew off the line side RIGHT");
         SetZoneParam(Kp_hard, Ki_hard, Kd_hard, true, speedReturnToLine); // Установить новые значения параметров зоны
-        lineFollowZone = 2; // Установить новое значение зоны
+        lineFollowZone = 2; // Установить новое значение зоны справа
       }
     }
+    
     // Иначе, если зона не равна -2 или 2, то едем по камере
     if (abs(lineFollowZone) < 2) {
-      error = (lineX == 0 ? 0 : lineX - LINE_FOLLOW_SET_POINT); // Нахождение ошибки
+      error = lineX - LINE_FOLLOW_SET_POINT; // Нахождение ошибки
       regulator.setpoint = error; // Передаём ошибку регулятору
     } else if (abs(lineFollowZone) == 2) { // Если сейчас зона равна -2 или 2 и робот в поиске линии...
       if (lineX != 0) { // Проверяем, что камера нашла линию
@@ -221,34 +221,32 @@ void loop() {
     }
 
     // Проверка в какой зоне находится линия
-    if (abs(lineFollowZone) != 2) { // Если не крайние значения зоны, когда был зафиксирован слёт
+    if (abs(lineFollowZone) < 2) { // Если не крайние значения зоны, когда был зафиксирован слёт
       if (CAM_X_CENTER_L_TRESHOLD <= lineX && lineX <= CAM_X_CENTER_R_TRESHOLD) { // Центр фигуры линии в центральной зоне 0
-        if (lineFollowZone != 0 && !lineFollowModeSwitchTmr.active()) { // Если текущая зона не 0, т.е. не центральная и таймер не активен, то выполняем один раз
-          delayLineFollowModeSwitch = DELAY_LINE_FOLLOW_HARD_MODE; // Время для подтверждения, что камера видит простую зону
-          lineFollowModeSwitchTmr.setTime(delayLineFollowModeSwitch); // Установить время таймеру
-          lineFollowModeSwitchTmr.start(); // Запустить таймер
-          if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Set delayLineFollowModeSwitch: " + String(DELAY_LINE_FOLLOW_HARD_MODE));
+        if (lineFollowZone != 0 && !lineFollowEasyModeSwitchTmr.active()) { // Если текущая зона не 0, т.е. не центральная и таймер не активен, то выполняем один раз
+          lineFollowEasyModeSwitchTmr.setTime(DELAY_LINE_FOLLOW_LIGHT_MODE); // Время для подтверждения, что камера видит простую зону
+          lineFollowEasyModeSwitchTmr.start(); // Запустить таймер
+          if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Set delayLineFollowModeSwitch: " + String(DELAY_LINE_FOLLOW_LIGHT_MODE));
         }
-        if (lineFollowModeSwitchTmr.tick() && lineFollowZone != 0) { // Время вышло, подтверждаем центральную зону 0 ...
-          if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Confirm set lineFollowZone EASY");
+        if (lineFollowEasyModeSwitchTmr.elapsed() && lineFollowZone != 0) { // Время вышло, подтверждаем центральную зону 0 ...
           lineFollowZone = 0; // Установить новое значение зоны - центр
+          if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Confirm set lineFollowZone EASY (0)");
           SetZoneParam(Kp_easy, Ki_easy, Kd_easy, true, speedEasyLine); // Установить новые значения параметров зоны
         }
       } else { // Линия за центральной границой слева или справа
-        if (abs(lineFollowZone) != 1 && !lineFollowModeSwitchTmr.active()) { // Если текущая зона не -1 или 1, т.е. не центральная и таймер не активен, то выполняем один раз
-          delayLineFollowModeSwitch = DELAY_LINE_FOLLOW_LIGHT_MODE; // Записать время для подтверждения, что камера видит сложную зону
-          lineFollowModeSwitchTmr.setTime(delayLineFollowModeSwitch); // Установить время таймеру
-          lineFollowModeSwitchTmr.start(); // Запустить таймер
-          if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Set delayLineFollowModeSwitch: " + String(DELAY_LINE_FOLLOW_LIGHT_MODE));
+        if (abs(lineFollowZone) != 1 && !lineFollowHardModeSwitchTmr.active()) { // Если текущая зона не -1 или 1, т.е. не центральная и таймер не активен, то выполняем один раз
+          lineFollowHardModeSwitchTmr.setTime(DELAY_LINE_FOLLOW_HARD_MODE); // Записать время для подтверждения, что камера видит сложную зону
+          lineFollowHardModeSwitchTmr.start(); // Запустить таймер
+          if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Set delayLineFollowModeSwitch: " + String(DELAY_LINE_FOLLOW_HARD_MODE));
         }
-        if (lineFollowModeSwitchTmr.tick() && abs(lineFollowZone) != 1) { // Время вышло, подтверждаем зону с крайней левой/правой стороны -1 или 1
-          if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Confirm set lineFollowZone HARD");
+        if (lineFollowHardModeSwitchTmr.elapsed() && abs(lineFollowZone) != 1) { // Время вышло, подтверждаем зону с крайней левой/правой стороны -1 или 1
           if (lineX >= LINE_FOLLOW_SET_POINT) lineFollowZone = 1; // Установить новое значение зоны справа
           else lineFollowZone = -1; // Иначе зона слева
+          if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Confirm set lineFollowZone HARD (" + String(lineFollowZone) + ")");
           SetZoneParam(Kp_hard, Ki_hard, Kd_hard, true, speedHardLine); // Установить новые значения параметров зоны
         }
       }
-      regulator.setDt(loopTime != 0 ? loopTime : 1); // Установка dt для регулятора
+      regulator.setDt(loopTime != 0 ? loopTime : 10); // Установка dt для регулятора
       u = regulator.getResult(); // Управляющее воздействие с регулятора
       if (ON_GSERVO_CONTROL) ChassisControl(u, speed); // Для управления моторами регулятором
     } else if (lineFollowZone == -2) { // Если линия была потеряна слева
@@ -258,10 +256,7 @@ void loop() {
     }
 
     // Запустить моторы для проверки
-    if (ON_GSERVO_FOR_TEST) {
-      MotorSpeed(lServoMot, 100, GSERVO_L_DIR_MODE, GSERVO_L_CW_L_BOARD_PWM, GSERVO_L_CW_R_BOARD_PWM, GSERVO_L_CCW_L_BOARD_PWM, GSERVO_L_CCW_R_BOARD_PWM);
-      MotorSpeed(rServoMot, 100, GSERVO_R_DIR_MODE, GSERVO_R_CW_L_BOARD_PWM, GSERVO_R_CW_R_BOARD_PWM, GSERVO_R_CCW_L_BOARD_PWM, GSERVO_R_CCW_R_BOARD_PWM);
-    }
+    if (ON_GSERVO_FOR_TEST) ChassisControl(0, 0);
     
     // Печаталь информации о выбранной фигуре
     if (PRINT_INFO_ABOUT_OBJ_DEBUG) {
@@ -273,6 +268,7 @@ void loop() {
     }
     // Для отладки основной информации о регулировании
     if (PRINT_DT_ERR_U_DEBUG) {
+      Serial.print("lineFollowZone: " + String(lineFollowZone) + "\t");
       Serial.print("loopTime: " + String(loopTime) + "\t");
       Serial.print("error: " + String(error) + "\t");
       Serial.println("u: " + String(u));
@@ -281,7 +277,7 @@ void loop() {
 }
 
 // Установка новых параметров езды по линии
-void SetZoneParam(int newKp, int newKi, int newKd, bool resetRegIntegral, int newSpeed) {
+void SetZoneParam(float newKp, float float, float newKd, bool resetRegIntegral, int newSpeed) {
   regulator.Kp = newKp;
   regulator.Ki = newKi;
   regulator.Kd = newKd;
