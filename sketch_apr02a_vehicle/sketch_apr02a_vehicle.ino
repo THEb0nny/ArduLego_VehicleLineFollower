@@ -29,11 +29,12 @@
 #define ON_GSERVO_CONTROL true // Включить управление серво
 #define ON_GSERVO_FOR_TEST false // Включить серво для тертирования, ON_GSERVO_CONTROL должно быть false
 
-#define SWITCH_ZONE_MODE_DEBUG true // Отладка обработки алгоритма о сменах зоны
+#define SWITCH_ZONE_MODE_DEBUG false // Отладка обработки алгоритма о сменах зоны
 #define PRINT_FROM_CAM_DEBUG false // Отладка информации с камеры
-#define PRINT_LINE_SEN_VAL_DEBUG false // Печать информации о значений с датчиков линии
+#define PRINT_LINE_SEN_RAW_VAL_DEBUG false // Печать информации о сырых значений с датчиков линии
+#define PRINT_LINE_SEN_VAL_DEBUG false // Печать информации о логических значений с датчиков линии
 #define PRINT_INFO_ABOUT_OBJ_DEBUG false // Отладка информации о выбранном объекте в качестве линии
-#define PRINT_DT_ERR_U_DEBUG true // Печать информации о loopTime, error, u
+#define PRINT_DT_ERR_U_DEBUG false // Печать информации о loopTime, error, u
 
 #define MOTORS_CONTROL_FUNC_DEBUG false // Отдалка функции MotorsControl
 #define MOTOR_SPEED_FUNC_DEBUG false // Отдалка функции MotorsControl
@@ -44,8 +45,8 @@
 #define SERVO_L_PIN 9 // Пин левого серво мотора
 #define SERVO_R_PIN 10 // Пин правого серво мотора
 
-#define L_LINE_SEN_PIN 4 // Пин левого датчика линии
-#define R_LINE_SEN_PIN 7 // Пин левого датчика линии
+#define L_LINE_SEN_PIN A0 // Пин левого датчика линии
+#define R_LINE_SEN_PIN A1 // Пин левого датчика линии
 
 #define REF_RAW_BLACK_LS 600 // Сырое значение чёрного левого датчика линии
 #define REF_RAW_WHITE_LS 27 // Сырое значение белого левого датчика линии
@@ -57,7 +58,7 @@
 #define DELAY_LINE_FOLLOW_LIGHT_MODE 300 // Время для подтверждения лёгкой линии
 #define DELAY_LINE_FOLLOW_HARD_MODE 50 // Время для подтверждения сложной линии линии
 
-#define MAX_MIN_SERVO_COMAND 100 // Максимальное значение скорости вперёд/назад серво
+#define MAX_MIN_SERVO_COMMAND 100 // Максимальное значение скорости вперёд/назад серво
 
 #define GSERVO_STOP_PWM 1500 // Значение импулста для остановки мотора, нулевой скорости geekservo
 #define GSERVO_L_CW_L_BOARD_PWM 1591 // Левая граница ширины импульса вравщения по часовой geekservo левого
@@ -74,20 +75,18 @@
 #define GSERVO_R_DIR_MODE true // Режим реверса вращения правого сервомотора
 
 #define CAM_WIDTH 310 // Ширина кадра от камеры
-
-#define LINE_FOLLOW_SET_POINT CAM_WIDTH / 2 // Значение уставки, к которому линия должна стремиться - это центр кадра
-
 #define CAM_X_CENTER_BORDER_OFFSET 100 // Околоцентральная граница
 #define CAM_X_CENTER_L_TRESHOLD (CAM_WIDTH / 2) - CAM_X_CENTER_BORDER_OFFSET // Левое значение центральной границы
 #define CAM_X_CENTER_R_TRESHOLD (CAM_WIDTH / 2) + CAM_X_CENTER_BORDER_OFFSET // Правое значение центральной границы
 
-#define LINE_AREA_MIN 30 // Минимальное значение для определения блоба линии
-#define LINE_Y_BOTTOM_START 230 // Значение от которого стоит отмечать, что мы нашли действительно линию
+#define LINE_FOLLOW_SET_POINT CAM_WIDTH / 2 // Значение уставки, к которому линия должна стремиться - это центр кадра
+#define LINE_AREA_MIN 800 // Минимальное значение для определения блоба линии
+#define LINE_Y_BOTTOM_START 230 // Значение начала блоба снизу от которого стоит отмечать, что мы нашли действительно линию
 
 #define MAX_CAM_WAIT_AT_START 7000 // Максимальное время ожидания подключения камеры, это защитный параметр
 
-unsigned long currTime, prevTime, loopTime; // Время
-unsigned int delayLineFollowModeSwitch = 0; // Время задержки переключения режима движения по линии по зонам
+unsigned long currTime, prevTime, loopTime; // Объявление переменных времени
+unsigned int delayLineFollowModeSwitch = 0; // Переменные для хранения время задержки переключения режима движения по линии по зонам
 
 float Kp_easy = 0.3, Kp_hard = 0.5; // Пропрорциональные коэффиценты, при прямых участках и поворотах
 float Ki_easy = 0, Ki_hard = 0.01; // Интегральные коэффициенты, при прямых участках и поворотах
@@ -100,11 +99,11 @@ TimerMs regulatorTmr(10); // Инициализация объекта тайм�
 TimerMs lineFollowModeSwitchTmr; // Инициализация объекта таймера
 GyverPID regulator(Kp_easy, Ki_easy, Kd_easy, 10); // Инициализируем коэффициенты регулятора и dt
 
-int speedEasyLine = 80, speedHardLine = 35, speedReturnToLine = 35; // Значения скорости на простом, нормальном и сложном участке
-int speed = speedEasyLine; // Скорость
+int speedEasyLine = 80, speedHardLine = 35, speedReturnToLine = 35; // Переменная для хренения хначения скорости на простом, сложном участке и при слёте с линии
+int speed = speedEasyLine; // Переменная для хранения скорости
+int error = 0; // Переменная для хренения ошибки регулирования
 float u = 0; // Переменная для хранения управляющего воздействия с регулятора
-
-byte lineFollowZone = 1; // Зона, в которой робот движется, изначально по центру
+int lineFollowZone = 0; // Зона, в которой робот движется, изначально по центру
 
 void(* softResetFunc) (void) = 0; // Функция мягкого перезапуска
 
@@ -123,14 +122,15 @@ void setup() {
   while (true) { // Ждём пока камера начнёт работать
     uint8_t nBlobs = trackingCam.readBlobs(); // Считать найденные объекты
     Serial.println(nBlobs); // Выводим количество найденных blobs
-    int maxArea = 0, bottom = 0;
+    int maxArea = 0, bottom = 0; // Переменные для записи максимального размера и значения, где начинается линия по Y
     for(int i = 0; i < nBlobs; i++) { // Печать информации о blobs
       int area = trackingCam.blob[i].area;
-      maxArea = max(maxArea, area); // Проверка размера
-      int bottom = trackingCam.blob[i].bottom;
+      maxArea = max(maxArea, area); // Найти самый большой блоб по размеру
+      bottom = trackingCam.blob[i].bottom;
     }
-    if (maxArea > LINE_AREA_MIN && bottom > LINE_Y_BOTTOM_START || millis() >= MAX_CAM_WAIT_AT_START) break; // Если нашли большое большую область и она начинается с низу кадра, то выбрасываем из цикла, или выбрасываем или по максимальному времени
-    delay(500); // Задержка между проверками
+    // Если нашли блоб, который больше, чем минимальное значение и нижняя граница её по Y начинается с низу кадра, то выбрасываем из цикла, или выбрасываем или по максимальному времени
+    if (maxArea > LINE_AREA_MIN && bottom > LINE_Y_BOTTOM_START || millis() >= MAX_CAM_WAIT_AT_START) break;
+    delay(100); // Задержка между проверками
   }
   digitalWrite(LED_PIN, HIGH); // Включаем светодиод
   Serial.println("Ready... press btn");
@@ -145,8 +145,7 @@ void setup() {
     }
   }
   regulatorTmr.start(); // Запускаем таймер цикла регулирования
-  // Записываем время перед стартом loop
-  currTime = millis();
+  currTime = millis(); // Записываем время перед стартом loop
   prevTime = currTime;
 }
 
@@ -161,8 +160,8 @@ void loop() {
     prevTime = currTime;
     int lineX = 0, lineY = 0; // Инициализация переменной для значения пятна линии по X и Y
     int lineB = 0, lineL = 0, lineR = 0; // Инициализация переменной для значения пятна линии снизу, слева и справа
-    int lineArea = 0; // Инициализации переменной для площади пятна линии
-    uint8_t nBlobs = trackingCam.readBlobs(); // Считать найденные объекты
+    int lineArea = LINE_AREA_MIN; // Инициализации переменной для площади пятна линии, которая изначально будет равна LINE_AREA_MIN
+    uint8_t nBlobs = trackingCam.readBlobs(); // Считать найденные объекты с камеры
     for(int i = 0; i < nBlobs; i++) { // Обработать все объекты
       int area = trackingCam.blob[i].area;
       int cx = trackingCam.blob[i].cx;
@@ -170,7 +169,8 @@ void loop() {
       int bottom = trackingCam.blob[i].bottom;
       int left = trackingCam.blob[i].left;
       int right = trackingCam.blob[i].right;
-      if (bottom > LINE_Y_BOTTOM_START && area > lineArea) { // Если линия начинается с нижней части картинки камеры и если площадь текущей фигуры-линии больше других, то выбираем этот объект как линию
+      // Если линия начинается с нижней части картинки камеры и если площадь текущего блоба больше других (но учитывая минимальные LINE_AREA_MIN), то выбираем этот объект как линию
+      if (bottom > LINE_Y_BOTTOM_START && area > lineArea) {
         lineArea = area; // Записываем новое значение площади блоба (линии)
         lineX = cx; lineY = cy; // Записываем cx, cy этого блоба (линии)
         lineB = bottom; // Записываем откуда началась блоб (линия) снизу
@@ -192,59 +192,69 @@ void loop() {
     int rLineSenVal = constrain(map(rLineSenRawVal, REF_RAW_BLACK_RS, REF_RAW_WHITE_RS, 0, 100), 0, 100); // Обработаные значения отражения правого датчика линии
     bool lLineSen = (lLineSenVal < REF_LS_TRESHOLD ? true : false); // Логическое значение о переходе с белого на чёрное левого датчика линии
     bool rLineSen = (rLineSenVal < REF_LS_TRESHOLD ? true : false); // Логическое значение о переходе с белого на чёрное правого датчика линии
+    if (PRINT_LINE_SEN_RAW_VAL_DEBUG) Serial.println("lLineSenRawVal: " + String(lLineSenRawVal) + "\t" + "rLineSenRawVal: " + String(rLineSenRawVal));
     if (PRINT_LINE_SEN_VAL_DEBUG) Serial.println("lLineSen: " + String(lLineSen) + "\t" + "rLineSen: " + String(rLineSen));
 
-    int error = (lineX == 0 ? 0 : lineX - LINE_FOLLOW_SET_POINT); // Нахождение ошибки
-    if (lineX != 0) regulator.setpoint = error; // Передаём ошибку регулятору
-    else { // Защита от слёта с линии датчиками линии
-      if (lLineSen == 1 && rLineSen == 0) lineFollowZone = -2; // Если слева сигнал, а справа нет
-      if (lLineSen == 0 && rLineSen == 1) lineFollowZone = 2; // Если сигнал справа, а слева нет
-      if (SWITCH_ZONE_MODE_DEBUG && abs(lineFollowZone) == 2) Serial.println("Flew off the line side " + String(lineFollowZone == -2 ? "left" : "right"));
+    // Проверка на датчики защиты слёта с линии
+    if (lLineSen == true && rLineSen == false) { // Если левый датчик среагировал на линию, а правый нет
+      if (abs(lineFollowZone) != 2) { // Только, если до этого значение зоны было другим, тогда обновляем зону
+        if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Flew off the line side RIGHT");
+        SetZoneParam(Kp_hard, Ki_hard, Kd_hard, true, speedReturnToLine); // Установить новые значения параметров зоны
+        lineFollowZone = -2; // Установить новое значение зоны
+      }
+    } else if (lLineSen == false && rLineSen == true) { // Если правый датчик среагировал на линию, а левый нет
+      if (abs(lineFollowZone) != 2) { // Один раз обновить значения
+        if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Flew off the line side LEFT");
+        SetZoneParam(Kp_hard, Ki_hard, Kd_hard, true, speedReturnToLine); // Установить новые значения параметров зоны
+        lineFollowZone = 2; // Установить новое значение зоны
+      }
+    }
+    // Иначе, если зона не равна -2 или 2, то едем по камере
+    if (abs(lineFollowZone) < 2) {
+      error = (lineX == 0 ? 0 : lineX - LINE_FOLLOW_SET_POINT); // Нахождение ошибки
+      regulator.setpoint = error; // Передаём ошибку регулятору
+    } else if (abs(lineFollowZone) == 2) { // Если сейчас зона равна -2 или 2 и робот в поиске линии...
+      if (lineX != 0) { // Проверяем, что камера нашла линию
+        if (lineFollowZone == -2) lineFollowZone = -1; // Если слёт был слева, тогда устанавливаем зону -1
+        else if (lineFollowZone == 2) lineFollowZone = 1; // Если слёт был справа, тогда устанавливаем зону 1
+      }
     }
 
     // Проверка в какой зоне находится линия
-    if (abs(lineFollowZone) != 2) { // Елси не крайние значения зоны, когда зафиксирован слёт
+    if (abs(lineFollowZone) != 2) { // Если не крайние значения зоны, когда был зафиксирован слёт
       if (CAM_X_CENTER_L_TRESHOLD <= lineX && lineX <= CAM_X_CENTER_R_TRESHOLD) { // Центр фигуры линии в центральной зоне 0
-        if (lineFollowZone != 0 && !lineFollowModeSwitchTmr.active()) { // Если текущая зона не 0, т.е. не центральная
+        if (lineFollowZone != 0 && !lineFollowModeSwitchTmr.active()) { // Если текущая зона не 0, т.е. не центральная и таймер не активен, то выполняем один раз
           delayLineFollowModeSwitch = DELAY_LINE_FOLLOW_HARD_MODE; // Время для подтверждения, что камера видит простую зону
           lineFollowModeSwitchTmr.setTime(delayLineFollowModeSwitch); // Установить время таймеру
           lineFollowModeSwitchTmr.start(); // Запустить таймер
           if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Set delayLineFollowModeSwitch: " + String(DELAY_LINE_FOLLOW_HARD_MODE));
         }
-        if (lineFollowModeSwitchTmr.tick() && lineFollowZone != 1) { // Время вышло, подтверждаем центральную зону 0
+        if (lineFollowModeSwitchTmr.tick() && lineFollowZone != 0) { // Время вышло, подтверждаем центральную зону 0 ...
           if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Confirm set lineFollowZone EASY");
           lineFollowZone = 0; // Установить новое значение зоны - центр
-          regulator.Kp = Kp_easy;
-          regulator.Ki = Ki_easy;
-          regulator.Kd = Kd_easy;
-          regulator.integral = 0; // Обнуляем интегральную составляющую
-          speed = speedEasyLine; // Установить новую скорость
+          SetZoneParam(Kp_easy, Ki_easy, Kd_easy, true, speedEasyLine); // Установить новые значения параметров зоны
         }
       } else { // Линия за центральной границой слева или справа
-        if (abs(lineFollowZone) != 1 && !lineFollowModeSwitchTmr.active()) { // Если зона была не -1 или 1
+        if (abs(lineFollowZone) != 1 && !lineFollowModeSwitchTmr.active()) { // Если текущая зона не -1 или 1, т.е. не центральная и таймер не активен, то выполняем один раз
           delayLineFollowModeSwitch = DELAY_LINE_FOLLOW_LIGHT_MODE; // Записать время для подтверждения, что камера видит сложную зону
           lineFollowModeSwitchTmr.setTime(delayLineFollowModeSwitch); // Установить время таймеру
           lineFollowModeSwitchTmr.start(); // Запустить таймер
           if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Set delayLineFollowModeSwitch: " + String(DELAY_LINE_FOLLOW_LIGHT_MODE));
         }
-        if (lineFollowModeSwitchTmr.tick() && lineFollowZone != 1) { // Время вышло, подтверждаем зону с клайней левой/правой стороны -1 / 1
+        if (lineFollowModeSwitchTmr.tick() && abs(lineFollowZone) != 1) { // Время вышло, подтверждаем зону с крайней левой/правой стороны -1 или 1
           if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Confirm set lineFollowZone HARD");
           if (lineX >= LINE_FOLLOW_SET_POINT) lineFollowZone = 1; // Установить новое значение зоны справа
           else lineFollowZone = -1; // Иначе зона слева
-          regulator.Kp = Kp_hard;
-          regulator.Ki = Ki_hard;
-          regulator.Kd = Kd_hard;
-          regulator.integral = 0; // Обнуляем интегральную составляющую
-          speed = speedHardLine; // Установить новую скорость
+          SetZoneParam(Kp_hard, Ki_hard, Kd_hard, true, speedHardLine); // Установить новые значения параметров зоны
         }
       }
       regulator.setDt(loopTime != 0 ? loopTime : 1); // Установка dt для регулятора
       u = regulator.getResult(); // Управляющее воздействие с регулятора
       if (ON_GSERVO_CONTROL) ChassisControl(u, speed); // Для управления моторами регулятором
-    } else if (lineFollowZone == -1) { // Если линия была потеряна слева
-      ChassisControl(-100, speedReturnToLine); // Для управления моторами
-    } else if (lineFollowZone == 2) { // Если линия была потерпяна справа
-      ChassisControl(100, speedReturnToLine); // Для управления моторами      
+    } else if (lineFollowZone == -2) { // Если линия была потеряна слева
+      if (ON_GSERVO_CONTROL) ChassisControl(-100, speedReturnToLine); // Для управления моторами
+    } else if (lineFollowZone == 2) { // Если линия была потеряна справа
+      if (ON_GSERVO_CONTROL) ChassisControl(100, speedReturnToLine); // Для управления моторами      
     }
 
     // Запустить моторы для проверки
@@ -256,11 +266,9 @@ void loop() {
     // Печаталь информации о выбранной фигуре
     if (PRINT_INFO_ABOUT_OBJ_DEBUG) {
       Serial.print("Line: ");
-      Serial.print(lineX, DEC); Serial.print("\t");
-      Serial.print(lineY, DEC); Serial.print("\t");
+      Serial.print(lineX, DEC); Serial.print("\t"); Serial.print(lineY, DEC); Serial.print("\t");
       Serial.print(lineB, DEC); Serial.print("\t");
-      Serial.print(lineL, DEC); Serial.print("\t");
-      Serial.print(lineR, DEC); Serial.print("\t");
+      Serial.print(lineL, DEC); Serial.print("\t"); Serial.print(lineR, DEC); Serial.print("\t");
       Serial.print(lineArea, DEC); Serial.println();
     }
     // Для отладки основной информации о регулировании
@@ -270,6 +278,15 @@ void loop() {
       Serial.println("u: " + String(u));
     }
   }
+}
+
+// Установка новых параметров езды по линии
+void SetZoneParam(int newKp, int newKi, int newKd, bool resetRegIntegral, int newSpeed) {
+  regulator.Kp = newKp;
+  regulator.Ki = newKi;
+  regulator.Kd = newKd;
+  if (resetRegIntegral) regulator.integral = 0; // Обнуляем интегральную составляющую, если требуется
+  speed = newSpeed; // Установить новую скорость  
 }
 
 // Управление двумя моторами
@@ -286,12 +303,12 @@ void ChassisControl(int dir, int speed) {
 // Управление серво мотором
 void MotorSpeed(Servo servoMot, int inputSpeed, bool rotateMode, int gservoCWLBoardPWM, int gservoCWRBoardPWM, int gservoCCWLBoardPWM, int gservoCCWRBoardPWM) {
   if (MOTOR_SPEED_FUNC_DEBUG) Serial.print("inputSpeed: " + String(inputSpeed) + "\t\t");
-  inputSpeed = constrain(inputSpeed, -MAX_MIN_SERVO_COMAND, MAX_MIN_SERVO_COMAND) * (rotateMode? -1 : 1); // Обрезать скорость и установить реверс, если есть такая установка
+  inputSpeed = constrain(inputSpeed, -MAX_MIN_SERVO_COMMAND, MAX_MIN_SERVO_COMMAND) * (rotateMode? -1 : 1); // Обрезать скорость и установить реверс, если есть такая установка
   if (MOTOR_SPEED_FUNC_DEBUG) Serial.print("inputSpeedProcessed " + String(inputSpeed) + "\t\t");
   int speed = 0; // Инициализируем переменную, которую передадим сервоприводу
   // Перевести в диапазон шим сигнала
-  if (inputSpeed > 0) speed = map(inputSpeed, 0, MAX_MIN_SERVO_COMAND, gservoCWLBoardPWM, gservoCWRBoardPWM); // Скорость, которая больше 0
-  else if (inputSpeed < 0) speed = map(inputSpeed, -MAX_MIN_SERVO_COMAND, 0, gservoCCWLBoardPWM, gservoCCWRBoardPWM); // Скорость, которая ниже 0
+  if (inputSpeed > 0) speed = map(inputSpeed, 0, MAX_MIN_SERVO_COMMAND, gservoCWLBoardPWM, gservoCWRBoardPWM); // Скорость, которая больше 0
+  else if (inputSpeed < 0) speed = map(inputSpeed, -MAX_MIN_SERVO_COMMAND, 0, gservoCCWLBoardPWM, gservoCCWRBoardPWM); // Скорость, которая ниже 0
   else speed = GSERVO_STOP_PWM; // Нулевая скорость
   servoMot.writeMicroseconds(speed); // Установить сервомотору шим сигнал
   if (MOTOR_SPEED_FUNC_DEBUG) Serial.println("speedConverted: " + String(speed));
