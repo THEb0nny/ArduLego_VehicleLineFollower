@@ -215,7 +215,7 @@ void loop() {
     
     // Иначе, если зона не равна -2 или 2, то едем по камере
     if (abs(lineFollowZone) < 2) {
-      error = lineX - LINE_FOLLOW_SET_POINT; // Нахождение ошибки
+      error = (lineX == 0 ? 0 : lineX - LINE_FOLLOW_SET_POINT); // Нахождение ошибки
       regulator.setpoint = error; // Передаём ошибку регулятору
     } else if (abs(lineFollowZone) == 2) { // Если сейчас зона равна -2 или 2 и робот в поиске линии...
       if (lineX != 0) { // Проверяем, что камера нашла линию
