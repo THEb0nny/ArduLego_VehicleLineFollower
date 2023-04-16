@@ -17,7 +17,7 @@
  * 9-IC0 |O O| 10-ID1
 */
 
-#include <SoftwareSerial.h>
+#include <SoftwareSerial.h> 
 #include <Servo.h>
 #include "GyverPID.h"
 #include <TimerMs.h>
@@ -25,15 +25,15 @@
 #include "TrackingCamI2C.h"
 
 #define ON_GSERVO_CONTROL true // Включить управление серво
-#define ON_GSERVO_FOR_TEST false // Включить серво для тертирования, ON_GSERVO_CONTROL должно быть false
+#define ON_GSERVO_FOR_TEST false // Включить серво для тестирования, ON_GSERVO_CONTROL должно быть false
 
-#define SWITCH_ZONE_MODE_DEBUG true // Отладка обработки алгоритма о сменах зоны
+#define SWITCH_ZONE_MODE_DEBUG false // Отладка обработки алгоритма о сменах зоны
 #define PRINT_START_BLOB_N_FROM_CAM_DEBUG false // Отладка информации с камеры при старте
 #define PRINT_FROM_CAM_DEBUG false // Отладка информации с камеры
 #define PRINT_LINE_SEN_RAW_VAL_DEBUG false // Печать информации о сырых значений с датчиков линии
 #define PRINT_LINE_SEN_VAL_DEBUG false // Печать информации о логических значений с датчиков линии
 #define PRINT_INFO_ABOUT_OBJ_DEBUG false // Отладка информации о выбранном объекте в качестве линии
-#define PRINT_DT_ERR_U_DEBUG true // Печать информации о loopTime, error, u
+#define PRINT_DT_ERR_U_DEBUG false // Печать информации о loopTime, error, u
 
 #define MOTORS_CONTROL_FUNC_DEBUG false // Отдалка функции MotorsControl
 #define MOTOR_SPEED_FUNC_DEBUG false // Отдалка функции MotorsControl
@@ -74,7 +74,7 @@
 #define GSERVO_R_DIR_MODE true // Режим реверса вращения правого сервомотора
 
 #define CAM_WIDTH 310 // Ширина кадра от камеры
-#define CAM_X_CENTER_BORDER_OFFSET 80 // Околоцентральная граница
+#define CAM_X_CENTER_BORDER_OFFSET 95 // Околоцентральная граница
 #define CAM_X_CENTER_L_TRESHOLD (CAM_WIDTH / 2) - CAM_X_CENTER_BORDER_OFFSET // Левое значение центральной границы
 #define CAM_X_CENTER_R_TRESHOLD (CAM_WIDTH / 2) + CAM_X_CENTER_BORDER_OFFSET // Правое значение центральной границы
 
@@ -88,7 +88,7 @@ unsigned long currTime, prevTime, loopTime; // Объявление переме
 
 float Kp_easy = 0.3, Kp_hard = 0.5; // Пропрорциональные коэффиценты, при прямых участках и поворотах
 float Ki_easy = 0, Ki_hard = 0.01; // Интегральные коэффициенты, при прямых участках и поворотах
-float Kd_easy = 1, Kd_hard = 2; // Дифференциальные коэффициенты, при прямых участках и поворотах
+float Kd_easy = 1, Kd_hard = 1; // Дифференциальные коэффициенты, при прямых участках и поворотах
 
 TrackingCamI2C trackingCam; // Инициализация объекта камеры
 Servo lServoMot, rServoMot; // Инициализация объектов сервомоторов
@@ -97,7 +97,7 @@ TimerMs regulatorTmr(10); // Инициализация объекта тайм�
 TimerMs lineFollowEasyModeSwitchTmr, lineFollowHardModeSwitchTmr; // Инициализация объектов таймеров
 GyverPID regulator(Kp_easy, Ki_easy, Kd_easy, 10); // Инициализируем коэффициенты регулятора и dt
 
-int speedEasyLine = 80, speedHardLine = 35, speedReturnToLine = 35; // Переменная для хренения хначения скорости на простом, сложном участке и при слёте с линии
+int speedEasyLine = 90, speedHardLine = 50, speedReturnToLine = 35; // Переменная для хренения хначения скорости на простом, сложном участке и при слёте с линии
 int speed = speedEasyLine; // Переменная для хранения скорости
 int error = 0; // Переменная для хренения ошибки регулирования
 float u = 0; // Переменная для хранения управляющего воздействия с регулятора
@@ -200,12 +200,16 @@ void loop() {
         if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Flew off the line side LEFT");
         SetZoneParam(Kp_hard, Ki_hard, Kd_hard, true, speedReturnToLine); // Установить новые значения параметров зоны
         lineFollowZone = -2; // Установить новое значение зоны слева
+        lineFollowEasyModeSwitchTmr.stop();
+        lineFollowHardModeSwitchTmr.stop();
       }
     } else if (lLineSen == false && rLineSen == true) { // Если правый датчик среагировал на линию, а левый нет
       if (abs(lineFollowZone) != 2) { // Один раз обновить значения
         if (SWITCH_ZONE_MODE_DEBUG) Serial.println("Flew off the line side RIGHT");
         SetZoneParam(Kp_hard, Ki_hard, Kd_hard, true, speedReturnToLine); // Установить новые значения параметров зоны
         lineFollowZone = 2; // Установить новое значение зоны справа
+        lineFollowEasyModeSwitchTmr.stop();
+        lineFollowHardModeSwitchTmr.stop();
       }
     }
     
@@ -248,15 +252,15 @@ void loop() {
       }
       regulator.setDt(loopTime != 0 ? loopTime : 10); // Установка dt для регулятора
       u = regulator.getResult(); // Управляющее воздействие с регулятора
-      if (ON_GSERVO_CONTROL) ChassisControl(u, speed); // Для управления моторами регулятором
+      if (ON_GSERVO_CONTROL && !ON_GSERVO_FOR_TEST) ChassisControl(u, speed); // Для управления моторами регулятором
     } else if (lineFollowZone == -2) { // Если линия была потеряна слева
-      if (ON_GSERVO_CONTROL) ChassisControl(-100, speedReturnToLine); // Для управления моторами
+      if (ON_GSERVO_CONTROL && !ON_GSERVO_FOR_TEST) ChassisControl(-100, speedReturnToLine); // Для управления моторами
     } else if (lineFollowZone == 2) { // Если линия была потеряна справа
-      if (ON_GSERVO_CONTROL) ChassisControl(100, speedReturnToLine); // Для управления моторами      
+      if (ON_GSERVO_CONTROL && !ON_GSERVO_FOR_TEST) ChassisControl(100, speedReturnToLine); // Для управления моторами      
     }
 
     // Запустить моторы для проверки
-    if (ON_GSERVO_FOR_TEST) ChassisControl(0, 0);
+    if (!ON_GSERVO_CONTROL && ON_GSERVO_FOR_TEST) ChassisControl(0, 0);
     
     // Печаталь информации о выбранной фигуре
     if (PRINT_INFO_ABOUT_OBJ_DEBUG) {
@@ -268,16 +272,16 @@ void loop() {
     }
     // Для отладки основной информации о регулировании
     if (PRINT_DT_ERR_U_DEBUG) {
-      Serial.print("lineFollowZone: " + String(lineFollowZone) + "\t");
       Serial.print("loopTime: " + String(loopTime) + "\t");
       Serial.print("error: " + String(error) + "\t");
-      Serial.println("u: " + String(u));
+      Serial.print("u: " + String(u) + "\t");
+      Serial.println("lineFollowZone: " + String(lineFollowZone));
     }
   }
 }
 
 // Установка новых параметров езды по линии
-void SetZoneParam(float newKp, float float, float newKd, bool resetRegIntegral, int newSpeed) {
+void SetZoneParam(float newKp, float newKi, float newKd, bool resetRegIntegral, int newSpeed) {
   regulator.Kp = newKp;
   regulator.Ki = newKi;
   regulator.Kd = newKd;
