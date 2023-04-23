@@ -59,6 +59,8 @@
 
 #define MAX_MIN_SERVO_COMMAND 100 // Максимальное значение скорости вперёд/назад серво
 
+#define TIME_FOR_TURN_WHEN_LEAVING_FROM_LINE 200 // Время для поворота при срабатывании датчиков лиции защиты слёта
+
 #define GSERVO_STOP_PWM 1500 // Значение импулста для остановки мотора, нулевой скорости geekservo
 #define GSERVO_L_CW_L_BOARD_PWM 1591 // Левая граница ширины импульса вравщения по часовой geekservo левого
 #define GSERVO_L_CW_R_BOARD_PWM 2500 // Левая граница ширины импульса вравщения по часовой geekservo левого
@@ -134,7 +136,7 @@ void setup() {
   digitalWrite(LED_PIN, HIGH); // Включаем светодиод
   Serial.println("Ready... press btn");
   lServoMot.attach(SERVO_L_PIN); rServoMot.attach(SERVO_R_PIN); // Подключение сервомоторов
-  ChassisControl(0, 0); // При старте моторы выключаем
+  ChassisControl(0, 0, 0); // При старте моторы выключаем
   while (true) { // Ждём нажатие кнопки для старта
     btn.tick(); // Опрашиваем кнопку
     if (btn.press()) { // Произошло нажатие
@@ -252,15 +254,15 @@ void loop() {
       }
       regulator.setDt(loopTime != 0 ? loopTime : 10); // Установка dt для регулятора
       u = regulator.getResult(); // Управляющее воздействие с регулятора
-      if (ON_GSERVO_CONTROL && !ON_GSERVO_FOR_TEST) ChassisControl(u, speed); // Для управления моторами регулятором
+      if (ON_GSERVO_CONTROL && !ON_GSERVO_FOR_TEST) ChassisControl(u, speed, 0); // Для управления моторами регулятором
     } else if (lineFollowZone == -2) { // Если линия была потеряна слева
-      if (ON_GSERVO_CONTROL && !ON_GSERVO_FOR_TEST) ChassisControl(-100, speedReturnToLine); // Для управления моторами
+      if (ON_GSERVO_CONTROL && !ON_GSERVO_FOR_TEST) ChassisControl(-100, speedReturnToLine, TIME_FOR_TURN_WHEN_LEAVING_FROM_LINE); // Для управления моторами
     } else if (lineFollowZone == 2) { // Если линия была потеряна справа
-      if (ON_GSERVO_CONTROL && !ON_GSERVO_FOR_TEST) ChassisControl(100, speedReturnToLine); // Для управления моторами      
+      if (ON_GSERVO_CONTROL && !ON_GSERVO_FOR_TEST) ChassisControl(100, speedReturnToLine, TIME_FOR_TURN_WHEN_LEAVING_FROM_LINE); // Для управления моторами      
     }
 
     // Запустить моторы для проверки
-    if (!ON_GSERVO_CONTROL && ON_GSERVO_FOR_TEST) ChassisControl(0, 0);
+    if (!ON_GSERVO_CONTROL && ON_GSERVO_FOR_TEST) ChassisControl(0, 0, 0);
     
     // Печаталь информации о выбранной фигуре
     if (PRINT_INFO_ABOUT_OBJ_DEBUG) {
@@ -290,7 +292,7 @@ void SetZoneParam(float newKp, float newKi, float newKd, bool resetRegIntegral, 
 }
 
 // Управление двумя моторами
-void ChassisControl(int dir, int speed) {
+void ChassisControl(int dir, int speed, int executionTimeMs) {
   int lServoMotSpeed = speed + dir, rServoMotSpeed = speed - dir;
   float z = (float) speed / max(abs(lServoMotSpeed), abs(rServoMotSpeed)); // Вычисляем отношение желаемой мощности к наибольшей фактической
   lServoMotSpeed *= z, rServoMotSpeed *= z;
@@ -298,6 +300,7 @@ void ChassisControl(int dir, int speed) {
   MotorSpeed(lServoMot, lServoMotSpeed, GSERVO_L_DIR_MODE, GSERVO_L_CW_L_BOARD_PWM, GSERVO_L_CW_R_BOARD_PWM, GSERVO_L_CCW_L_BOARD_PWM, GSERVO_L_CCW_R_BOARD_PWM);
   if (MOTORS_CONTROL_FUNC_DEBUG) Serial.print("rServoMot ->\t");  
   MotorSpeed(rServoMot, rServoMotSpeed, GSERVO_R_DIR_MODE, GSERVO_R_CW_L_BOARD_PWM, GSERVO_R_CW_R_BOARD_PWM, GSERVO_R_CCW_L_BOARD_PWM, GSERVO_R_CCW_R_BOARD_PWM);
+  delay(executionTimeMs); // https://arduino.stackexchange.com/questions/86542/what-does-a-delay0-actually-do
 }
 
 // Управление серво мотором
